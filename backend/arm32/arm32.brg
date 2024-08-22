@@ -1,0 +1,93 @@
+%{
+#include <stdio.h>
+#include <assert.h>
+#include <stdlib.h>
+#include "all.h"
+
+extern LIST mempool;
+#define ALLOC(n) List_NewLast(mempool, n)
+%}
+%start stm
+
+%term imm12=1 simm8=2 imm16=31 imm5=65 imm10=60 CNSTI4=4
+%term INDIRI4=7 LDR=21 STR=24
+%term ADD=9 SDIV=10 MUL=11 SUB=12 RSB=29
+%term CMP=30 JUMPV=19 LABELV=20 BL=41 BX=43
+%term MOV=40 CLZ=38 LSR=39 LSL=63 ASR=64
+%term PUSH=44 POP=45 VPUSH=61 VPOP=62
+%term VMOV=47 VMUL=48 VADD=49 VSUB=50 VDIV=51
+%term vcvt_signedToFloatingPoint  = 52
+%term vcvt_floatingPointToSigned  = 53
+%term VNEG=54 VCMP=55 VCMPz=56 VMRS=57 VSTR=58 VLDR=59
+
+%term STRING=46 REGISTER=28 LABEL=42
+
+%%
+stm:    STR(reg,INDIRI4(reg)) = 10 (1);
+stm:    STR(reg,INDIRI4(ADD(reg,reg))) = 11 (1);
+stm:    STR(reg,INDIRI4(ADD(reg,imm12))) = 12 (1);
+stm:    CMP(reg,reg) = 23 (1);
+stm:    CMP(reg,simm8) = 24 (1);
+stm:    JUMPV(CNSTI4) = 31 (1);
+stm:    BL(LABELV) = 57 (1);
+stm:    BX(reg) = 59 (1);
+stm:    LABEL = 58;
+stm:    PUSH = 60 (1);
+stm:    POP = 61 (1);
+stm:    STRING = 62;
+stm:    VCMP(reg,reg) = 71 (1);
+stm:    VCMPz(reg) = 72 (1);
+stm:    VMRS = 73 (1);
+stm:    VSTR(reg,INDIRI4(reg)) = 76 (1);
+stm:    VSTR(reg,INDIRI4(ADD(reg,imm10))) = 77 (1);
+stm:    VPUSH = 78 (1);
+stm:    VPOP = 79 (1);
+stm:    STR(reg,INDIRI4(ADD(reg,LSL(reg,imm5)))) = 83 (1);
+stm:    CMP(reg,LSL(reg,imm5)) = 90 (1);
+stm:    CMP(reg,LSR(reg,imm5)) = 91 (1);
+stm:    CMP(reg,ASR(reg,imm5)) = 92 (1);
+
+reg:    LDR(CNSTI4) = 4 (1);
+reg:    LDR(INDIRI4(reg)) = 5 (1);
+reg:    LDR(INDIRI4(ADD(reg,reg))) = 6 (1);
+reg:    LDR(INDIRI4(ADD(reg,imm12))) = 7 (1);
+reg:    LDR(LABELV) = 8 (1);
+reg:    ADD(reg,reg) = 13 (1);
+reg:    ADD(reg,simm8) = 14 (1);
+reg:    SDIV(reg,reg) = 15 (1);
+reg:    MUL(reg,reg) = 18 (1);
+reg:    SUB(reg,reg) = 19 (1);
+reg:    SUB(reg,simm8) = 20 (1);
+reg:    ADD(MUL(reg,reg),reg) = 21 (1);
+reg:    SUB(reg,MUL(reg,reg)) = 22 (1);
+reg:    REGISTER = 34;
+reg:    RSB(reg,reg) = 35 (1);
+reg:    RSB(reg,simm8) = 36 (1);
+reg:    MOV(reg) = 52 (1);
+reg:    MOV(imm16) = 54 (1);
+reg:    CLZ(reg) = 55 (1);
+reg:    LSR(reg,imm5) = 56 (1);
+reg:    VMOV(reg) = 63 (1);
+reg:    VMUL(reg,reg) = 64 (1);
+reg:    VADD(reg,reg) = 65 (1);
+reg:    VSUB(reg,reg) = 66 (1);
+reg:    VDIV(reg,reg) = 67 (1);
+reg:    vcvt_signedToFloatingPoint(reg) = 68 (1);
+reg:    vcvt_floatingPointToSigned(reg) = 69 (1);
+reg:    VNEG(reg) = 70 (1);
+reg:    VLDR(INDIRI4(reg)) = 74 (1);
+reg:    VLDR(INDIRI4(ADD(reg,imm10))) = 75 (1);
+reg:    LSL(reg,imm5) = 80 (1);
+reg:    ASR(reg,imm5) = 81 (1);
+reg:    LDR(INDIRI4(ADD(reg,LSL(reg,imm5)))) = 82 (1);
+reg:    ADD(reg,LSL(reg,imm5)) = 84 (1);
+reg:    ADD(reg,LSR(reg,imm5)) = 85 (1);
+reg:    ADD(reg,ASR(reg,imm5)) = 86 (1);
+reg:    SUB(reg,LSL(reg,imm5)) = 87 (1);
+reg:    SUB(reg,LSR(reg,imm5)) = 88 (1);
+reg:    SUB(reg,ASR(reg,imm5)) = 89 (1);
+reg:    MOV(LSL(reg,imm5)) = 93 (1);
+reg:    MOV(LSR(reg,imm5)) = 94 (1);
+reg:    MOV(ASR(reg,imm5)) = 95 (1);
+
+%%
