@@ -4,9 +4,10 @@
 #include <string.h>
 #include "all.h"
 
-/* # define SIMPLE  */
+/* # define SIMPLE
+*/
 
-/* Classification of a given node (i.e. what state it's in).  */
+/* 对给定节点的分类(即它处于什么状态)。  */
 enum ra_node_type
 {
     INITIAL = 0,
@@ -31,6 +32,7 @@ typedef struct
     int spill_slot;
     int num_conflicts;
     int weight;
+    int reg_class;
 
 # if !defined(SIMPLE)
     bitmap moves;
@@ -53,10 +55,8 @@ typedef struct
     bitmap spilledRegs;
 
 # if !defined(SIMPLE)
-    bitmap mv_worklist;
-    bitmap mv_active;
-    bitmap mv_coalesced;
-    bitmap mv_constrained;
+    bitmap mv_worklist, mv_coalesced, mv_constrained;
+    bitmap mv_frozen, mv_active;
 # endif /* SIMPLE */
 }PhaseIFG;
 
@@ -313,7 +313,16 @@ static BOOL intersects(const struct Range* r1, const struct Range* r2)
     return intersects_at(r1, r2) != -1; 
 }
 
-static int InsertVex(PhaseIFG *G, int v)
+static int LocateVex(PhaseIFG *G,int u)
+{ /* 返回顶点u在有向图G中的位置(序号),如不存在则返回-1 */
+    struct pair *p;
+    p = avl_find (G->map, &u);
+    if  (p)
+        return p->y;
+    return -1;
+}
+
+static int InsertVex(PhaseIFG *G, int v, int reg_class)
 {  /* 初始条件: 有向图G存在,v和有向图G中顶点有相同特征 */
    /* 操作结果: 在有向图G中增添新顶点v(不增添与顶点相关的弧,留待InsertArc()去做) */
     struct pair *p;
@@ -333,6 +342,7 @@ static int InsertVex(PhaseIFG *G, int v)
     (*G).xlist[(*G). vexnum].firstin = BITMAP_XMALLOC ();
     (*G).xlist[(*G). vexnum].firstout = BITMAP_XMALLOC ();
     (*G).xlist[(*G). vexnum].v = v;
+    (*G).xlist[(*G). vexnum].reg_class = reg_class;
     (*G).xlist[(*G). vexnum].interval = create_interval (v);
     (*G).xlist[(*G). vexnum].hard_num = v < FIRST_VIRTUAL_REGISTER ? v : -1;
     (*G).xlist[(*G). vexnum].spill_slot = -1;
@@ -399,6 +409,7 @@ static void CreateDG(PhaseIFG *G)
     G->mv_worklist = BITMAP_XMALLOC ();
     G->mv_coalesced = BITMAP_XMALLOC ();
     G->mv_constrained = BITMAP_XMALLOC ();
+    G->mv_frozen = BITMAP_XMALLOC ();
 # endif /* SIMPLE */
 }
 
@@ -431,6 +442,7 @@ void DestroyGraph(PhaseIFG *G)
     BITMAP_XFREE (G->mv_worklist);
     BITMAP_XFREE (G->mv_coalesced);
     BITMAP_XFREE (G->mv_constrained);
+    BITMAP_XFREE (G->mv_frozen);
 # endif /* SIMPLE */
 
     memset (G, 0, sizeof (*G));
@@ -526,12 +538,12 @@ build_i_graph (PhaseIFG *G, LIST blocks)
                     ArmInstOutput (curs, def);
                     for (i = 0; i < (unsigned) num_caller_save_registers; i++)
                     {
-                        v = InsertVex (G, caller_save_registers[i]);
+                        v = LocateVex (G, caller_save_registers[i]);
                         for (bmp_iter_set_init (&bi2, liveout, 0, &k);
                              bmp_iter_set (&bi2, &k);
                              bmp_iter_next (&bi2, &k))
                         {
-                            w = InsertVex (G, k);
+                            w = LocateVex (G, k);
                             if (w != v)
                                 InsertArc (G, w, v);
                         }
@@ -539,7 +551,7 @@ build_i_graph (PhaseIFG *G, LIST blocks)
                              bmp_iter_set (&bi2, &k);
                              bmp_iter_next (&bi2, &k))
                         {
-                            w = InsertVex (G, k);
+                            w = LocateVex (G, k);
                             if (w != v)
                                 InsertArc (G, w, v);
                         }
@@ -559,14 +571,14 @@ build_i_graph (PhaseIFG *G, LIST blocks)
                      bmp_iter_set (&bi, &i);
                      bmp_iter_next (&bi, &i))
                 {
-                    v = InsertVex (G, i);
+                    v = LocateVex (G, i);
                     bitmap_set_bit (GetVex (G, v)->moves, instr->uid);
                 }
                 for (bmp_iter_set_init (&bi, use, 0, &i);
                      bmp_iter_set (&bi, &i);
                      bmp_iter_next (&bi, &i))
                 {
-                    v = InsertVex (G, i);
+                    v = LocateVex (G, i);
                     bitmap_set_bit (GetVex (G, v)->moves, instr->uid);
                 }
                 bitmap_set_bit (G->mv_worklist, instr->uid);
@@ -577,12 +589,12 @@ build_i_graph (PhaseIFG *G, LIST blocks)
                  bmp_iter_set (&bi, &i);
                  bmp_iter_next (&bi, &i))
             {
-                v = InsertVex(G, i);
+                v = LocateVex(G, i);
                 for (bmp_iter_set_init (&bi2, liveout, 0, &k);
                      bmp_iter_set (&bi2, &k);
                      bmp_iter_next (&bi2, &k))
                 {
-                    w = InsertVex (G, k);
+                    w = LocateVex (G, k);
                     if (w != v)
                         InsertArc (G, w, v);
                 }
@@ -659,7 +671,7 @@ build_intervals (PhaseIFG *g, LIST blocks)
              bmp_iter_set (&bi, &bit);
              bmp_iter_next (&bi, &bit))
         {
-            u = InsertVex (g, bit);
+            u = LocateVex (g, bit);
             add_use (GetVex(g, u)->interval, block_from, block_to + 1);
         }
 
@@ -674,7 +686,7 @@ build_intervals (PhaseIFG *g, LIST blocks)
                 start = handle_method_arguments (op)->uid;
                 for (k = 0; k < num_caller_save_registers; k++)
                 {
-                    u = InsertVex (g, caller_save_registers[k]);
+                    u = LocateVex (g, caller_save_registers[k]);
                     add_use (GetVex(g, u)->interval, start, op->uid + 1);
                 }
             }
@@ -684,7 +696,7 @@ build_intervals (PhaseIFG *g, LIST blocks)
                  bmp_iter_set (&bi, &bit);
                  bmp_iter_next (&bi, &bit))
             {
-                u = InsertVex (g, bit);
+                u = LocateVex (g, bit);
                 add_def (GetVex(g, u)->interval, op->uid);
             }
             ArmInstInput (op, temp);
@@ -692,7 +704,7 @@ build_intervals (PhaseIFG *g, LIST blocks)
                  bmp_iter_set (&bi, &bit);
                  bmp_iter_next (&bi, &bit))
             {
-                u = InsertVex (g, bit);
+                u = LocateVex (g, bit);
                 add_use (GetVex (g, u)->interval, block_from, op->uid);
             }
         }
@@ -762,9 +774,9 @@ enable_moves (PhaseIFG *g, bitmap bmp)
 
 /* 将节点的度减1。  */
 static void
-decrement_degree (PhaseIFG *g, int v, struct reg_class_desc *classes, struct avl_table *virtual_regs)
+decrement_degree (PhaseIFG *g, int v, struct reg_class_desc *classes)
 {
-    int cl = gen_vregArm32(virtual_regs, GetVex (g, v)->v, ALL_REGS)->rclass;
+    int cl = GetVex (g, v)->reg_class;
     int before = GetVex (g, v)->num_conflicts;
     GetVex (g, v)->num_conflicts -= 1;
     if  (bitmap_count_bits (classes[cl].available) == before)
@@ -791,7 +803,7 @@ decrement_degree (PhaseIFG *g, int v, struct reg_class_desc *classes, struct avl
 
 /* 简化简化工作列表上的节点。  */
 static void
-simplify(PhaseIFG *g, struct reg_class_desc *classes, struct avl_table *virtual_regs)
+simplify(PhaseIFG *g, struct reg_class_desc *classes)
 {
     int f;
     bitmap temp_bitmap;
@@ -809,7 +821,7 @@ simplify(PhaseIFG *g, struct reg_class_desc *classes, struct avl_table *virtual_
     for (bmp_iter_set_init (&bi, temp_bitmap, 0, &i);
          bmp_iter_set (&bi, &i);
          bmp_iter_next (&bi, &i))
-        decrement_degree (g, i, classes, virtual_regs);
+        decrement_degree (g, i, classes);
 
     BITMAP_XFREE (temp_bitmap);
 }
@@ -833,13 +845,13 @@ alias (PhaseIFG *g, int v)
 # if !defined(SIMPLE)
 /* 从冻结工作列表中添加一个结点到简化工作列表。  */
 static void
-add_worklist (PhaseIFG *G, int v, struct reg_class_desc *classes, struct avl_table *virtual_regs)
+add_worklist (PhaseIFG *G, int v, struct reg_class_desc *classes)
 {
     int cl;
-    cl =gen_vregArm32 (virtual_regs, GetVex (G, v)->v, ALL_REGS)->rclass;
+    cl = GetVex (G, v)->reg_class;
     if  (GetVex (G, v)->v >= FIRST_VIRTUAL_REGISTER &&
          !move_related (G, v) &&
-         GetVex (G, v)->num_conflicts < bitmap_count_bits (classes[cl].available))
+         GetVex (G, v)->num_conflicts < (int) bitmap_count_bits (classes[cl].available))
     {
         bitmap_clear_bit (G->web_lists[FREEZE], v);
         bitmap_set_bit (G->web_lists[SIMPLIFY], v);
@@ -848,38 +860,27 @@ add_worklist (PhaseIFG *G, int v, struct reg_class_desc *classes, struct avl_tab
 
 /* 预着色节点合并启发式算法。  */
 static BOOL
-ok (PhaseIFG *G, int target, int source,struct reg_class_desc *classes, struct avl_table *virtual_regs)
-{
-    int cl;
-
-    cl =gen_vregArm32 (virtual_regs, GetVex (G, target)->v, ALL_REGS)->rclass;
-    if  (GetVex (G, target)->num_conflicts < bitmap_count_bits (classes[cl].available) ||
-         GetVex (G, target)->v < FIRST_VIRTUAL_REGISTER ||
-         bitmap_bit_p (GetVex (G, target)->firstout, source))
-        return TRUE;
-    return FALSE;
-}
-
-/* 预着色节点合并启发式算法。  */
-static BOOL
-gate (PhaseIFG *G, int v,int w,struct reg_class_desc *classes, struct avl_table *virtual_regs)
+ok (PhaseIFG *G, int target,int source,struct reg_class_desc *classes)
 {
     bitmap temp_bitmap;
     unsigned i;
     bitmap_iterator bi;
     BOOL bResult = TRUE;
+    int cl;
 
     temp_bitmap = BITMAP_XMALLOC ();
-    adjacent (G, v, temp_bitmap);
+    adjacent (G, target, temp_bitmap);
     for (bmp_iter_set_init (&bi, temp_bitmap, 0, &i);
          bmp_iter_set (&bi, &i);
          bmp_iter_next (&bi, &i))
     {
-        if  (!ok (G, i, w, classes, virtual_regs))
-        {
-            bResult = FALSE;
-            break;
-        }
+        cl = GetVex (G, i)->reg_class;
+        if  (GetVex (G, i)->num_conflicts < (int) bitmap_count_bits (classes[cl].available) ||
+             GetVex (G, i)->v < FIRST_VIRTUAL_REGISTER ||
+             bitmap_bit_p (GetVex (G, i)->firstout, source))
+            continue;
+        bResult = FALSE;
+        break;
     }
     BITMAP_XFREE (temp_bitmap);
 
@@ -888,7 +889,7 @@ gate (PhaseIFG *G, int v,int w,struct reg_class_desc *classes, struct avl_table 
 
 /* 非预着色节点合并启发式算法。  */
 static BOOL
-conservative (PhaseIFG *G, int v,int w,struct reg_class_desc *classes, struct avl_table *virtual_regs)
+conservative (PhaseIFG *G, int v,int w,struct reg_class_desc *classes)
 {
     bitmap temp, temp2;
     int count;
@@ -905,7 +906,7 @@ conservative (PhaseIFG *G, int v,int w,struct reg_class_desc *classes, struct av
     bitmap_ior_into (temp, temp2);
     BITMAP_XFREE (temp2);
 
-    cl =gen_vregArm32 (virtual_regs, GetVex (G, v)->v, ALL_REGS)->rclass;
+    cl = GetVex (G, v)->reg_class;
     avail = bitmap_count_bits (classes[cl].available);
 
     for (bmp_iter_set_init (&bi, temp, 0, &i), count = 0;
@@ -921,7 +922,7 @@ conservative (PhaseIFG *G, int v,int w,struct reg_class_desc *classes, struct av
 
 /* 实际上是合并两个可以合并的节点。  */
 static void
-combine (PhaseIFG *G, int v,int w,struct reg_class_desc *classes, struct avl_table *virtual_regs)
+combine (PhaseIFG *G, int v,int w,struct reg_class_desc *classes)
 {
     bitmap temp_bitmap;
     unsigned i;
@@ -946,12 +947,12 @@ combine (PhaseIFG *G, int v,int w,struct reg_class_desc *classes, struct avl_tab
          bmp_iter_next (&bi, &i))
     {
         InsertArc (G, i, v);
-        decrement_degree (G, i, classes, virtual_regs);
+        decrement_degree (G, i, classes);
     }
     BITMAP_XFREE (temp_bitmap);
 
-    cl =gen_vregArm32 (virtual_regs, GetVex (G, v)->v, ALL_REGS)->rclass;
-    if  (GetVex (G, v)->num_conflicts >= bitmap_count_bits (classes[cl].available) &&
+    cl = GetVex (G, v)->reg_class;
+    if  (GetVex (G, v)->num_conflicts >= (int) bitmap_count_bits (classes[cl].available) &&
          bitmap_bit_p (G->web_lists[FREEZE], v))
     {
         bitmap_clear_bit (G->web_lists[FREEZE], v);
@@ -961,7 +962,7 @@ combine (PhaseIFG *G, int v,int w,struct reg_class_desc *classes, struct avl_tab
 
 /* 尝试合并移动工作列表上的第一个结点。  */
 static void
-coalesce (PhaseIFG *g,struct reg_class_desc *classes, struct avl_table *virtual_regs)
+coalesce (PhaseIFG *g,struct reg_class_desc *classes)
 {
     int mv_num, sregno, dregno;
     ArmInst mv;
@@ -973,8 +974,8 @@ coalesce (PhaseIFG *g,struct reg_class_desc *classes, struct avl_table *virtual_
     dregno = ArmInstGetOperandAsReg (mv, 0)->vregno;
     sregno = ArmInstGetOperandAsReg (mv, 1)->vregno;
 
-    dst = alias (g, InsertVex (g, dregno));
-    src = alias (g, InsertVex (g, sregno));
+    dst = alias (g, LocateVex (g, dregno));
+    src = alias (g, LocateVex (g, sregno));
 
     if  (GetVex (g, src)->v < FIRST_VIRTUAL_REGISTER)
     {
@@ -988,23 +989,23 @@ coalesce (PhaseIFG *g,struct reg_class_desc *classes, struct avl_table *virtual_
     if      (src == dst)
     {
         bitmap_set_bit (g->mv_coalesced, mv_num);
-        add_worklist (g, dst, classes, virtual_regs);
+        add_worklist (g, dst, classes);
     }
     else if (GetVex (g, src)->v < FIRST_VIRTUAL_REGISTER ||
              bitmap_bit_p (GetVex (g, src)->firstout, dst))
     {
         bitmap_set_bit (g->mv_constrained, mv_num);
-        add_worklist (g, dst, classes, virtual_regs);
-        add_worklist (g, src, classes, virtual_regs);
+        add_worklist (g, dst, classes);
+        add_worklist (g, src, classes);
     }
     else if ((GetVex (g, dst)->v < FIRST_VIRTUAL_REGISTER &&
-             gate (g, src, dst, classes, virtual_regs)) ||
+             ok (g, src, dst, classes)) ||
              (GetVex (g, dst)->v >= FIRST_VIRTUAL_REGISTER &&
-             conservative (g, src, dst, classes, virtual_regs)))
+             conservative (g, src, dst, classes)))
     {
         bitmap_set_bit (g->mv_coalesced, mv_num);
-        combine (g, dst, src, classes, virtual_regs);
-        add_worklist (g, dst, classes, virtual_regs);
+        combine (g, dst, src, classes);
+        add_worklist (g, dst, classes);
     }
     else
     {
@@ -1014,7 +1015,7 @@ coalesce (PhaseIFG *g,struct reg_class_desc *classes, struct avl_table *virtual_
 
 /* 冻结与v相关的复制。用于迭代合并。  */
 static void
-freeze_moves (PhaseIFG *G, int v, struct reg_class_desc *classes, struct avl_table *virtual_regs)
+freeze_moves (PhaseIFG *G, int v, struct reg_class_desc *classes)
 {
     bitmap temp, temp2;
     unsigned mv_num;
@@ -1037,16 +1038,17 @@ freeze_moves (PhaseIFG *G, int v, struct reg_class_desc *classes, struct avl_tab
         sregno = ArmInstGetOperandAsReg (mv, 1)->vregno;
         dregno = ArmInstGetOperandAsReg (mv, 0)->vregno;
 
-        src = alias (G, InsertVex (G, sregno));
+        src = alias (G, LocateVex (G, sregno));
         if  (alias (G, v) == src)
-            w = alias (G, InsertVex (G, dregno));
+            w = alias (G, LocateVex (G, dregno));
         else
             w = src;
         bitmap_clear_bit (G->mv_active, mv_num);
+        bitmap_set_bit (G->mv_frozen, mv_num);
         node_moves (G, w, temp2);
-        cl =gen_vregArm32 (virtual_regs, GetVex (G, w)->v, ALL_REGS)->rclass;
+        cl = GetVex (G, w)->reg_class;
         if  (bitmap_empty_p (temp2) &&
-             GetVex (G, w)->num_conflicts < bitmap_count_bits (classes[cl].available))
+             GetVex (G, w)->num_conflicts < (int) bitmap_count_bits (classes[cl].available))
         {
             bitmap_clear_bit (G->web_lists[FREEZE], w);
             bitmap_set_bit (G->web_lists[SIMPLIFY], w);
@@ -1059,25 +1061,26 @@ freeze_moves (PhaseIFG *G, int v, struct reg_class_desc *classes, struct avl_tab
 
 /* 冻结冻结工作列表上的第一个结点(仅用于迭代合并)。  */
 static void
-freeze (PhaseIFG *g, struct reg_class_desc *classes, struct avl_table *virtual_regs)
+freeze (PhaseIFG *g, struct reg_class_desc *classes)
 {
     int f;
 
     f = bitmap_first_set_bit (g->web_lists[FREEZE]);
     bitmap_clear_bit (g->web_lists[FREEZE], f);
     bitmap_set_bit (g->web_lists[SIMPLIFY], f);
-    freeze_moves (g, f, classes, virtual_regs);
+    freeze_moves (g, f, classes);
 }
 # endif /* SIMPLE */
 
 /* 选择最便宜的可能溢出的结点(我们在需要的时候才会真正溢出)。  */
 static void
-select_spill (PhaseIFG *g, struct reg_class_desc *classes, struct avl_table *virtual_regs)
+select_spill (PhaseIFG *g, struct reg_class_desc *classes)
 {
     unsigned i;
     bitmap_iterator bi;
     int a = bitmap_first_set_bit (g->web_lists[SPILL]);
 
+    /* 选择活跃区间最长的寄存器溢出。  */
     for (bmp_iter_set_init (&bi, g->web_lists[SPILL], 0, &i);
          bmp_iter_set (&bi, &i);
          bmp_iter_next (&bi, &i))
@@ -1087,7 +1090,7 @@ select_spill (PhaseIFG *g, struct reg_class_desc *classes, struct avl_table *vir
     bitmap_clear_bit (g->web_lists[SPILL], a);
     bitmap_set_bit (g->web_lists[SIMPLIFY], a);
 # if !defined(SIMPLE)
-    freeze_moves (g, a, classes, virtual_regs);
+    freeze_moves (g, a, classes);
 # endif /* SIMPLE */
 }
 
@@ -1102,7 +1105,7 @@ assign_spill_slot (control_flow_graph cfun, enum reg_classArm32 type)
 
 /* 将颜色分配给select栈上的所有节点。并更新合并后的网络的颜色。  */
 static void
-assign_colors (control_flow_graph cfun, PhaseIFG *g, struct avl_table *virtual_regs, struct reg_class_desc *classes)
+assign_colors (control_flow_graph cfun, PhaseIFG *g, struct reg_class_desc *classes)
 {
     int v;
     bitmap temp_bitmap;
@@ -1117,7 +1120,7 @@ assign_colors (control_flow_graph cfun, PhaseIFG *g, struct avl_table *virtual_r
         List_DeleteFirst (g->stack);
         bitmap_clear_bit (g->web_lists[SELECT], v);
 
-        cl = gen_vregArm32(virtual_regs, GetVex(g, v)->v, ALL_REGS)->rclass;
+        cl = GetVex(g, v)->reg_class;
         bitmap_copy (temp_bitmap, classes[cl].available);
 
         for (bmp_iter_set_init (&bi, GetVex(g, v)->firstout, 0, &i);
@@ -1167,7 +1170,7 @@ assign_reg_num (PhaseIFG *g, LIST blocks, struct avl_table *virtual_regs)
     }
 }
 
-static void addIntervalsForSpills(PhaseIFG *g, struct avl_table *virtual_regs, LIST blocks)
+static void insert_spill_code(PhaseIFG *g, struct avl_table *virtual_regs, LIST blocks)
 {
     int start;
     int end;
@@ -1192,9 +1195,9 @@ static void addIntervalsForSpills(PhaseIFG *g, struct avl_table *virtual_regs, L
             for (i = 0; i < ArmInstGetNumOperands (op); ++i)
             {
                 if  (ArmInstGetOperandAsReg (op, i) &&
-                     bitmap_bit_p (g->spilledRegs, InsertVex (g, ArmInstGetOperandAsReg (op, i)->vregno)))
+                     bitmap_bit_p (g->spilledRegs, LocateVex (g, ArmInstGetOperandAsReg (op, i)->vregno)))
                 {
-                    w = InsertVex (g, ArmInstGetOperandAsReg (op, i)->vregno);
+                    w = LocateVex (g, ArmInstGetOperandAsReg (op, i)->vregno);
 
                     start = op->uid - !ArmInstIsOutput (op, i);
                     end = 1 + op->uid - !ArmInstIsOutput (op, i);
@@ -1202,7 +1205,7 @@ static void addIntervalsForSpills(PhaseIFG *g, struct avl_table *virtual_regs, L
                     operand.vreg = gen_vregArm32 (virtual_regs, -1, ArmInstGetOperandAsReg (op, i)->rclass);
                     register_descriptorArm32 (operand.vreg, gen_vregArm32(virtual_regs, ArmInstGetOperandAsReg (op, i)->vregno, ALL_REGS), NULL, NULL, FALSE);
     
-                    v = InsertVex (g, operand.vreg->vregno);
+                    v = InsertVex (g, operand.vreg->vregno, operand.vreg->rclass);
                     add_use (GetVex (g, v)->interval, start, end);
                     add_def (GetVex (g, v)->interval, start);
                     ArmInstSetOperand (op, i, operand);
@@ -1245,12 +1248,14 @@ build_worklists (PhaseIFG *g, struct avl_table *virtual_regs, struct reg_class_d
 
 /* 寄存器分配的入口点。  */
 void
-regallocArm32 (control_flow_graph fn, struct avl_table *virtual_regs)
+ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs)
 {
     PhaseIFG g;
     LIST blocks;
     struct reg_class_desc classes[LIM_REG_CLASSES];
     int i;
+    vreg_tArm32 iter;
+    struct avl_traverser trav;
 
     memset (classes, 0, sizeof (classes));
     for (i = 0; i < LIM_REG_CLASSES; i++)
@@ -1260,7 +1265,7 @@ regallocArm32 (control_flow_graph fn, struct avl_table *virtual_regs)
 
     classes[GENERAL_REGS].next_avail = 0;
     classes[GENERAL_REGS].max_num = LAST_ARM_REGNUM + 1;
-    for (i = classes[GENERAL_REGS].next_avail; i < classes[GENERAL_REGS].max_num; i++)
+    for (i = classes[GENERAL_REGS].next_avail; i < (int) classes[GENERAL_REGS].max_num; i++)
     {
         bitmap_set_bit (classes[GENERAL_REGS].available, i);
     }
@@ -1268,13 +1273,19 @@ regallocArm32 (control_flow_graph fn, struct avl_table *virtual_regs)
 
     classes[VFP_REGS].next_avail = FIRST_VFP_REGNUM;
     classes[VFP_REGS].max_num = LAST_VFP_REGNUM + 1;
-    for (i = classes[VFP_REGS].next_avail; i < classes[VFP_REGS].max_num; i++)
+    for (i = classes[VFP_REGS].next_avail; i < (int) classes[VFP_REGS].max_num; i++)
     {
         bitmap_set_bit (classes[VFP_REGS].available, i);
     }
     bitmap_clear_bit (classes[VFP_REGS].available, SPILL_REG);
 
     CreateDG (&g);
+
+    for(  iter = (vreg_tArm32)avl_t_first (&trav, virtual_regs)
+       ;  iter != NULL
+       ;  iter = (vreg_tArm32)avl_t_next (&trav)
+       )
+        InsertVex (&g, iter->vregno, iter->rclass);
 
     blocks = List_Create ();
     pre_and_rev_post_order_compute (fn, NULL, blocks, TRUE, FALSE);
@@ -1289,27 +1300,24 @@ regallocArm32 (control_flow_graph fn, struct avl_table *virtual_regs)
 /*  Display (&g);*/
 
     for (i = 0; i < g.vexnum; i++)
-    {
         if  (GetVex (&g, i)->hard_num == -1)
-        {
             bitmap_set_bit (g.web_lists[INITIAL], i);
-        }
-    }
 
     build_worklists (&g, virtual_regs, classes);
+    bitmap_clear (g.web_lists[INITIAL]);
 
     do
     {
         if  (! bitmap_empty_p (g.web_lists[SIMPLIFY]))
-            simplify (&g, classes, virtual_regs);
+            simplify (&g, classes);
 # if !defined(SIMPLE)
         else if  (! bitmap_empty_p (g.mv_worklist))
-            coalesce (&g, classes, virtual_regs);
+            coalesce (&g, classes);
         else if  (! bitmap_empty_p (g.web_lists[FREEZE]))
-            freeze (&g, classes, virtual_regs);
+            freeze (&g, classes);
 # endif /* SIMPLE */
         else if  (! bitmap_empty_p (g.web_lists[SPILL]))
-            select_spill (&g, classes, virtual_regs);
+            select_spill (&g, classes);
     }
     while (! bitmap_empty_p (g.web_lists[SIMPLIFY]) ||
 # if !defined(SIMPLE)
@@ -1319,11 +1327,11 @@ regallocArm32 (control_flow_graph fn, struct avl_table *virtual_regs)
            ! bitmap_empty_p (g.web_lists[SPILL]));
 
 /*  Display (&g); */
-    assign_colors (fn, &g, virtual_regs, classes);
+    assign_colors (fn, &g, classes);
 
     if  (!bitmap_empty_p (g.spilledRegs))
     {
-        addIntervalsForSpills (&g, virtual_regs, blocks);
+        insert_spill_code (&g, virtual_regs, blocks);
         for (i = 0; i < g.vexnum; i++)
         {
             DeleteVex (&g, i);
@@ -1335,13 +1343,13 @@ regallocArm32 (control_flow_graph fn, struct avl_table *virtual_regs)
 # endif /* SIMPLE */
         }
         g.arcnum = 0;
-        bitmap_clear (g.web_lists[INITIAL]);
 # if !defined(SIMPLE)
         bitmap_clear (g.web_lists[COALESCED]);
         bitmap_clear (g.mv_coalesced);
         bitmap_clear (g.mv_active);
         bitmap_clear (g.mv_worklist);
         bitmap_clear (g.mv_constrained);
+        bitmap_clear (g.mv_frozen);
 # endif /* SIMPLE */
 
         goto repeat;

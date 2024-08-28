@@ -208,12 +208,17 @@ add_executable(${PROJECT_NAME}
 # -Werror强制警告当作错误处理
 # -Wall尽可能多的让编译器提示警告和错误
 # __STDC_VERSION__的目的是警告产生的flex源文件出现INT8_MAX警告等
-if(MSVC)
+if(WIN32)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
+    if(CMAKE_C_COMPILER_ID MATCHES "(C|c?)lang")
+        SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,/STACK:33554432")
+    else()
+        SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:33554432")
+    endif()
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wno-unused-function -Wno-char-subscripts -Wno-invalid-source-encoding)
+    SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,stack-size=8388608")
 endif()
-
-target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
 
 # 引入graphviz库的头文件，防止编译时找不到graphviz的头文件
 target_include_directories(${PROJECT_NAME} PRIVATE

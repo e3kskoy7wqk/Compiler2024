@@ -676,7 +676,7 @@ BOOL CodeGeneratorArm32(InterCode code, SymTab stab, const char *name, FILE *fil
             goto fail;
 
         /* 寄存器分配。  */
-        regallocArm32 (*func, virtual_regs);
+        ra_colorize_graph (*func, virtual_regs);
 /*      LinearScanAllocator (*func, virtual_regs); */
 
         if  (comp->cmpConfig.optimize)

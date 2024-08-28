@@ -39,6 +39,16 @@ GlobalVariableLocalization (InterCode code, SymTab stab)
     unsigned k;
     LIST globals;
 
+    for(  F=(control_flow_graph *)List_First(code->funcs)
+       ;  F!=NULL
+       ;  F = (control_flow_graph *)List_Next((void *)F)
+       )
+        if  (IRInstGetOperand (*(IRInst *) List_First ((*F)->entry_block_ptr->insns), 0)->var->sdFnc.sdfEntryPt)
+            break;
+    /* 没有入口函数。  */
+    if  (!F)
+        return;
+
     /* Step 1 :
        ------------------------------------------------------------------------
        将只在入口函数中出现的全局变量改成局部变量。

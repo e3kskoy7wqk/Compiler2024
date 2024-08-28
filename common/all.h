@@ -131,6 +131,17 @@ typedef struct dw_loc_list_struct *dw_loc_list_ref;
 
 /*---------------------------------------------------------------------------*/
 
+struct LIR_Op;
+typedef struct LIR_Op MR LIR_Op;
+
+union LIR_Opr;
+typedef union LIR_Opr MR LIR_Opr;
+
+struct vreg_t;
+typedef struct vreg_t MR vreg_t;
+
+/*---------------------------------------------------------------------------*/
+
 
 enum treeOps
 {

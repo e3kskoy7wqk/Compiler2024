@@ -2493,10 +2493,10 @@ static BOOL translate_fparam (IRInst inst, PINTERNAL_DATA pmydata)
 }
 static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata) 
 {
-    int icnt = 0;
-    int fcnt = 0;
+    int icnt;
+    int fcnt;
     IRInst *curs;
-    NODEPTR_TYPE pivot; /* 帧指针，用于帮助定位放在栈上的参数。  */
+    NODEPTR_TYPE pivot = NULL; /* 帧指针，用于帮助定位放在栈上的参数。  */
     NODEPTR_TYPE p;
     NODEPTR_TYPE tmp;
     varpool_node param;
@@ -2512,22 +2512,42 @@ static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata)
     p = tree (pmydata->tree_nodes, VPUSH, NULL, NULL);
     commit (inst->bb, p, 1, pmydata);
 
-    /* 初始化帧指针。  */
-    p = tree (pmydata->tree_nodes, STRING, NULL, NULL);
-    p->operand.ds = dyn_string_new (32);
-    dyn_string_insert_cstr (p->operand.ds, 0, "\t@ Set up the frame pointer.");
-    commit (inst->bb, p, 1, pmydata);
+    /* 计算参数个数以判断是否需要帧指针。  */
+    for(  curs=(IRInst *)InterCodeGetCursor (inst->bb->cfg->code, inst), fcnt = 0, icnt = 0
+       ;  curs!=NULL
+       ;  curs = (IRInst *)List_Next((void *)curs)
+       )
+    {
+        if  ((*(IRInst *)curs)->opcode == IRINST_OP_fparam)
+        {
+            param = varpool_get_node (pmydata->set, IRInstGetOperand(*curs, 0));
+            if  (param->var->sdType->tdTypeKind == TYP_FLOAT)
+                fcnt++;
+            else
+                icnt++;
+        }
+    }
 
-    tmp = tree (pmydata->tree_nodes, simm8, NULL, NULL);
-    tmp->operand.cval.cvValue.cvIval = 100;
-    p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
-    p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
-    p = tree (pmydata->tree_nodes, ADD, p, tmp);
-    p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, FP_REGNUM, GENERAL_REGS);
-    commit (inst->bb, p, burmArm32_reg_NT, pmydata);
+    /* 如果需要，则初始化帧指针。  */
+    if  (fcnt >= NUM_VFP_ARG_REGS ||
+         icnt >= NUM_ARG_REGS)
+    {
+        p = tree (pmydata->tree_nodes, STRING, NULL, NULL);
+        p->operand.ds = dyn_string_new (32);
+        dyn_string_insert_cstr (p->operand.ds, 0, "\t@ Set up the frame pointer.");
+        commit (inst->bb, p, 1, pmydata);
 
-    pivot = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
-    pivot->operand.vreg = p->operand.vreg;
+        tmp = tree (pmydata->tree_nodes, simm8, NULL, NULL);
+        tmp->operand.cval.cvValue.cvIval = 100;
+        p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
+        p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
+        p = tree (pmydata->tree_nodes, ADD, p, tmp);
+        p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, FP_REGNUM, GENERAL_REGS);
+        commit (inst->bb, p, burmArm32_reg_NT, pmydata);
+
+        pivot = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
+        pivot->operand.vreg = p->operand.vreg;
+    }
 
     /* 移动栈顶指针。  */
     p = tree (pmydata->tree_nodes, STRING, NULL, NULL);
@@ -2543,7 +2563,7 @@ static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata)
     p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
     commit (inst->bb, p, burmArm32_reg_NT, pmydata);
 
-    for(  curs=(IRInst *)InterCodeGetCursor (inst->bb->cfg->code, inst)
+    for(  curs=(IRInst *)InterCodeGetCursor (inst->bb->cfg->code, inst), fcnt = 0, icnt = 0
        ;  curs!=NULL
        ;  curs = (IRInst *)List_Next((void *)curs)
        )

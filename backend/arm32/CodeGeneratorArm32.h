@@ -212,4 +212,4 @@ BOOL ArmInst_is_move (ArmInst instr);
 
 /* procs in linearscan.c */
 void LinearScanAllocator (control_flow_graph fn, struct avl_table *virtual_regs);
-void regallocArm32 (control_flow_graph fn, struct avl_table *virtual_regs);
+void ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs);
