@@ -797,8 +797,8 @@ isNopCopy (ArmInst instr)
     BOOL retval;
     if  ((instr->opcode == ARMINST_OP_MOV_reg ||
          instr->opcode == ARMINST_OP_VMOV) &&
-         ArmInstGetOperandAsReg(instr, 0)->hard_num == ArmInstGetOperandAsReg(instr, 1)->hard_num &&
-         ArmInstGetOperandAsReg(instr, 0)->hard_num != -1)
+         ArmInstGetOperandAsReg (instr, 0)->hard_num == ArmInstGetOperandAsReg (instr, 1)->hard_num &&
+         ArmInstGetOperandAsReg (instr, 0)->hard_num != -1)
     {
         retval = TRUE;
     }
@@ -807,6 +807,14 @@ isNopCopy (ArmInst instr)
         retval = FALSE;
     }
     return retval;
+}
+
+BOOL
+ArmInst_is_move (ArmInst instr)
+{
+    return (instr->opcode == ARMINST_OP_MOV_reg ||
+            (instr->opcode == ARMINST_OP_VMOV &&
+            ArmInstGetOperandAsReg (instr, 1)->rclass == ArmInstGetOperandAsReg (instr, 0)->rclass));
 }
 
 void

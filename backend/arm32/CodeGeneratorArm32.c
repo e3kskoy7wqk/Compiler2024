@@ -676,10 +676,11 @@ BOOL CodeGeneratorArm32(InterCode code, SymTab stab, const char *name, FILE *fil
             goto fail;
 
         /* 寄存器分配。  */
-        // regallocArm32 (*func, virtual_regs);
-        LinearScanAllocator (*func, virtual_regs);
+        regallocArm32 (*func, virtual_regs);
+/*      LinearScanAllocator (*func, virtual_regs); */
 
-        if_convertArm32 (*func);
+        if  (comp->cmpConfig.optimize)
+            if_convertArm32 (*func);
 
         /* 更新callee_saved_reg、栈大小。  */
         update_frame_layoutArm32 (*func, virtual_regs);

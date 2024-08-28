@@ -652,7 +652,6 @@ bitmap_and_compl (bitmap dst, bitmap a, bitmap b)
 }
 
 /* A &= ~B */
-
 void
 bitmap_and_compl_into (bitmap a, bitmap b)
 {

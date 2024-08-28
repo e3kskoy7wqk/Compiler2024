@@ -52,7 +52,7 @@ SSA形式的消去|rewrite_out_of_ssa|
 :-:|:-:|:-:
 指令选择|InstSelectorArm32|算法：树模式匹配
 寄存器分配|LinearScanAllocator|算法：线性扫描寄存器分配
-寄存器分配（未使用）|regallocArm32|算法：图着色寄存器分配
+寄存器分配|regallocArm32|算法：图着色寄存器分配
 条件指令|if_convertArm32|
 
 ## 要求

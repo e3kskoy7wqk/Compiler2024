@@ -1,4 +1,4 @@
-﻿#include <stdarg.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -30,9 +30,12 @@ static struct pass_data opt_pass[] = {
     { "Data-flow based copy propagation pass" , copyprop  } ,    /* 复写传播 */
     { "Lazy Code Motion" , LazyCodeMotion  } ,    /* 懒惰代码移动 */
     { "Operator Strength Reduction" , OSR  } ,    /* 运算符强度削减 */
+#if 0
     { "Loop unrolling" , unroll_loops  } ,    /* 循环展开 */
+#endif
     { "builds the SSA form" , build_ssa  } ,    /* SSA形式的构建 */
     { "Dead Code Elimination" , perform_ssa_dce  } ,    /* 死代码消除 */
+    { "Tree-Height Reduction" , treeheight  } ,    /* 树高平衡 */
     { "Sparse Cond Const Prop" , SparseCondConstProp  } ,    /* 稀疏条件常量传播 */
     { "Global Value Numbering" , GlobalValueNumbering  } ,    /* 全局值编号 */
     { "Dead Code Elimination" , perform_ssa_dce  } ,    /* 死代码消除 */

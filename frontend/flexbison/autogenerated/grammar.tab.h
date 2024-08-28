@@ -1,8 +1,8 @@
-/* A Bison parser, made by GNU Bison 3.3.2.  */
+/* A Bison parser, made by GNU Bison 3.8.2.  */
 
 /* Bison interface for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2019 Free Software Foundation,
+   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2021 Free Software Foundation,
    Inc.
 
    This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+   along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 /* As a special exception, you may create a larger work that contains
    part or all of the Bison parser skeleton and distribute that work
@@ -31,8 +31,9 @@
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
-/* Undocumented macros, especially those whose name start with YY_,
-   are private implementation details.  Do not rely on them.  */
+/* DO NOT RELY ON FEATURES THAT ARE NOT DOCUMENTED in the manual,
+   especially those whose name start with YY_ or yy_.  They are
+   private implementation details that can be changed or removed.  */
 
 #ifndef YY_YY_GRAMMAR_TAB_H_INCLUDED
 # define YY_YY_GRAMMAR_TAB_H_INCLUDED
@@ -44,86 +45,90 @@
 extern int yydebug;
 #endif
 
-/* Token type.  */
+/* Token kinds.  */
 #ifndef YYTOKENTYPE
 # define YYTOKENTYPE
   enum yytokentype
   {
-    LOWER_THAN_ELSE = 258,
-    L_ELSE = 259,
-    L_CONST = 260,
-    L_INT = 261,
-    L_FLOAT = 262,
-    L_VOID = 263,
-    L_AND = 264,
-    L_ANDAND = 265,
-    L_ANDEQ = 266,
-    L_ASSIGN = 267,
-    L_COLON = 268,
-    L_COMMA = 269,
-    L_DECR = 270,
-    L_DIV = 271,
-    L_DIVEQ = 272,
-    L_EQUALS = 273,
-    L_EXCLAIM = 274,
-    L_GT = 275,
-    L_GTEQ = 276,
-    L_LBRACK = 277,
-    L_LT = 278,
-    L_LTEQ = 279,
-    L_MINUS = 280,
-    L_MINUSEQ = 281,
-    L_MOD = 282,
-    L_MULT = 283,
-    L_MULTEQ = 284,
-    L_NOTEQ = 285,
-    L_OR = 286,
-    L_OREQ = 287,
-    L_OROR = 288,
-    L_PERIOD = 289,
-    L_PLUS = 290,
-    L_QUEST = 291,
-    L_TILDE = 292,
-    L_XOR = 293,
-    L_XOREQ = 294,
-    L_BREAK = 295,
-    L_CASE = 296,
-    L_CONTINUE = 297,
-    L_DEFAULT = 298,
-    L_DO = 299,
-    L_FOR = 300,
-    L_GOTO = 301,
-    L_IF = 302,
-    L_LCURLY = 303,
-    L_LPAREN = 304,
-    L_RBRACK = 305,
-    L_RCURLY = 306,
-    L_RETURN = 307,
-    L_RPAREN = 308,
-    L_SEMI = 309,
-    L_SIZEOF = 310,
-    L_SW = 311,
-    L_WHILE = 312,
-    Identifier = 313,
-    IntConst = 314,
-    floatConst = 315
+    YYEMPTY = -2,
+    YYEOF = 0,                     /* "end of file"  */
+    YYerror = 256,                 /* error  */
+    YYUNDEF = 257,                 /* "invalid token"  */
+    LOWER_THAN_ELSE = 258,         /* LOWER_THAN_ELSE  */
+    L_CONST = 259,                 /* "const"  */
+    L_INT = 260,                   /* "int"  */
+    L_FLOAT = 261,                 /* "float"  */
+    L_VOID = 262,                  /* "void"  */
+    L_AND = 263,                   /* "&"  */
+    L_ANDAND = 264,                /* "&&"  */
+    L_ANDEQ = 265,                 /* "&="  */
+    L_ASSIGN = 266,                /* "="  */
+    L_COLON = 267,                 /* ":"  */
+    L_COMMA = 268,                 /* ","  */
+    L_DECR = 269,                  /* "--"  */
+    L_DIV = 270,                   /* "/"  */
+    L_DIVEQ = 271,                 /* "/="  */
+    L_EQUALS = 272,                /* "=="  */
+    L_EXCLAIM = 273,               /* "!"  */
+    L_GT = 274,                    /* ">"  */
+    L_GTEQ = 275,                  /* ">="  */
+    L_LBRACK = 276,                /* "["  */
+    L_LT = 277,                    /* "<"  */
+    L_LTEQ = 278,                  /* "<="  */
+    L_MINUS = 279,                 /* "-"  */
+    L_MINUSEQ = 280,               /* "-="  */
+    L_MOD = 281,                   /* "%"  */
+    L_MULT = 282,                  /* "*"  */
+    L_MULTEQ = 283,                /* "*="  */
+    L_NOTEQ = 284,                 /* "!="  */
+    L_OR = 285,                    /* "|"  */
+    L_OREQ = 286,                  /* "|="  */
+    L_OROR = 287,                  /* "||"  */
+    L_PERIOD = 288,                /* "."  */
+    L_PLUS = 289,                  /* "+"  */
+    L_QUEST = 290,                 /* "?"  */
+    L_TILDE = 291,                 /* "~"  */
+    L_XOR = 292,                   /* "^"  */
+    L_XOREQ = 293,                 /* "^="  */
+    L_BREAK = 294,                 /* "break"  */
+    L_CASE = 295,                  /* "case"  */
+    L_CONTINUE = 296,              /* "continue"  */
+    L_DEFAULT = 297,               /* "default"  */
+    L_DO = 298,                    /* "do"  */
+    L_ELSE = 299,                  /* "else"  */
+    L_FOR = 300,                   /* "for"  */
+    L_GOTO = 301,                  /* "goto"  */
+    L_IF = 302,                    /* "if"  */
+    L_LCURLY = 303,                /* "{"  */
+    L_LPAREN = 304,                /* "("  */
+    L_RBRACK = 305,                /* "]"  */
+    L_RCURLY = 306,                /* "}"  */
+    L_RETURN = 307,                /* "return"  */
+    L_RPAREN = 308,                /* ")"  */
+    L_SEMI = 309,                  /* ";"  */
+    L_SIZEOF = 310,                /* "sizeof"  */
+    L_SW = 311,                    /* "switch"  */
+    L_WHILE = 312,                 /* "while"  */
+    Identifier = 313,              /* Identifier  */
+    IntConst = 314,                /* IntConst  */
+    floatConst = 315               /* floatConst  */
   };
+  typedef enum yytokentype yytoken_kind_t;
 #endif
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-
 union YYSTYPE
 {
-#line 58 "/home/pi/compiler/frontend/flexbison/grammar.y" /* yacc.c:1921  */
+#line 58 "D:/compiler/frontend/flexbison/grammar.y"
 
     float floatValue;
     unsigned intValue;
     Tree node;
 
-#line 125 "grammar.tab.h" /* yacc.c:1921  */
-};
+#line 130 "grammar.tab.h"
 
+};
 typedef union YYSTYPE YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define YYSTYPE_IS_DECLARED 1
@@ -132,6 +137,8 @@ typedef union YYSTYPE YYSTYPE;
 
 extern YYSTYPE yylval;
 
+
 int yyparse (void);
+
 
 #endif /* !YY_YY_GRAMMAR_TAB_H_INCLUDED  */

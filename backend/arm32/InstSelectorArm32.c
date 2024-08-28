@@ -642,15 +642,15 @@ void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtua
     int last = 0;
 
     /* 统计指令中使用了哪些寄存器。  */
-    for(  bb=(basic_block *)List_First(func->basic_block_info)
-        ;  bb!=NULL
-        ;  bb = (basic_block *)List_Next((void *)bb)
-        )
+    for(  bb=(basic_block *) List_First(func->basic_block_info)
+       ;  bb!=NULL
+       ;  bb = (basic_block *) List_Next((void *)bb)
+       )
     {
-        for(  insn=(ArmInst)List_First(((BblockArm32)(*bb)->param)->code)
-            ;  insn!=NULL
-            ;  insn = (ArmInst)List_Next((void *)insn)
-            )
+        for(  insn=(ArmInst) List_First(((BblockArm32)(*bb)->param)->code)
+           ;  insn!=NULL
+           ;  insn = (ArmInst) List_Next((void *)insn)
+           )
         {
             if  (insn->opcode == ARMINST_OP_PUSH ||
                  insn->opcode == ARMINST_OP_POP ||
@@ -667,18 +667,14 @@ void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtua
 
     /* 计算callee_saved_reg_size的值。  */
     for (i = 0; i < num_callee_save_registers; ++i)
-    {
         if  (bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, callee_save_registers[i]))
-        {
             func->callee_saved_reg_size += UNITS_PER_WORD;
-        }
-    }
 
     /* 找到push、pop、vpush、vpop指令的位置。  */
-    for(  insn=(ArmInst)List_First(((BblockArm32)(func->entry_block_ptr)->param)->code)
-        ;  insn!=NULL
-        ;  insn = (ArmInst)List_Next((void *)insn)
-        )
+    for(  insn=(ArmInst) List_First(((BblockArm32)(func->entry_block_ptr)->param)->code)
+       ;  insn!=NULL
+       ;  insn = (ArmInst) List_Next((void *)insn)
+       )
     {
         if  (insn->opcode == ARMINST_OP_PUSH)
         {
@@ -690,10 +686,10 @@ void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtua
             break;
         }
     }
-    for(  insn=(ArmInst)List_First(((BblockArm32)(func->exit_block_ptr)->param)->code)
-        ;  insn!=NULL
-        ;  insn = (ArmInst)List_Next((void *)insn)
-        )
+    for(  insn=(ArmInst) List_First(((BblockArm32)(func->exit_block_ptr)->param)->code)
+       ;  insn!=NULL 
+       ;  insn = (ArmInst) List_Next((void *)insn)
+       )
     {
         if  (insn->opcode == ARMINST_OP_POP)
         {
@@ -717,7 +713,8 @@ void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtua
     }
 
     /* 如果栈大小超过simm8范围，则会使用SPILL_REG加载栈移动的距离，因而需要将其记录。  */
-    if  (!is_simm8 (stack_size) && !bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, SPILL_REG))
+    if  (!is_simm8 (stack_size) &&
+         !bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, SPILL_REG))
     {
         func->callee_saved_reg_size += UNITS_PER_WORD;
         bitmap_set_bit (((struct BfunctionArm32 *)func->param)->callee_saved_reg, SPILL_REG);
@@ -731,38 +728,74 @@ void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtua
     }
 
     /* 更新帧指针偏移量。  */
-    insn = (ArmInst)List_Next ((void *)vpush_insn);
-    operand.cval.cvValue.cvIval = func->callee_saved_reg_size;
-    ArmInstSetOperand (insn, 2, operand);
+    for(  insn=(ArmInst) List_First(((BblockArm32)(func->entry_block_ptr)->param)->code)
+       ;  insn!=NULL
+       ;  insn = (ArmInst) List_Next((void *)insn)
+       )
+    {
+        if  (insn->opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInstGetOperand (insn, 0)->ds), "\t@ Set up the frame pointer."))
+        {
+            operand.cval.cvValue.cvIval = func->callee_saved_reg_size;
+            ArmInstSetOperand ((ArmInst) List_Next((void *)insn), 2, operand);
+            break;
+        }
+    }
 
     /* 更新移动栈指针的指令。  */
-    if  (is_simm8 (stack_size))
+    for(  insn=(ArmInst) List_First(((BblockArm32)(func->entry_block_ptr)->param)->code)
+       ;  insn!=NULL
+       ;  insn = (ArmInst) List_Next((void *)insn)
+       )
     {
-        operand.cval.cvValue.cvIval = stack_size;
-        insn = (ArmInst)List_Next (List_Next ((void *)vpush_insn));
-        ArmInstSetOperand (insn, 2, operand);
-        insn = (ArmInst)List_Prev ((void *)vpop_insn);
-        ArmInstSetOperand (insn, 2, operand);
+        if  (insn->opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInstGetOperand (insn, 0)->ds), "\t@ Decrement the stack pointer."))
+        {
+            insn = (ArmInst) List_Next((void *)insn);
+            if  (is_simm8 (stack_size))
+            {
+                operand.cval.cvValue.cvIval = stack_size;
+                ArmInstSetOperand (insn, 2, operand);
+            }
+            else
+            {
+                operand.vreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
+                insn->opcode = ARMINST_OP_SUB_reg;
+                ArmInstSetOperand (insn, 2, operand);
+                insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_const);
+                ArmInstSetOperand (insn, 0, operand);
+                operand.cval.cvValue.cvIval = stack_size;
+                ArmInstSetOperand (insn, 1, operand);
+            }
+            break;
+        }
     }
-    else
+    for(  insn=(ArmInst) List_First(((BblockArm32)(func->exit_block_ptr)->param)->code)
+       ;  insn!=NULL
+       ;  insn = (ArmInst) List_Next((void *)insn)
+       )
     {
-        operand.vreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
-        insn = (ArmInst)List_Next (List_Next ((void *)vpush_insn));
-        insn->opcode = ARMINST_OP_SUB_reg;
-        ArmInstSetOperand (insn, 2, operand);
-        insn = ArmInstInsertAfter (push_insn, ARMINST_OP_LDR_const);
-        ArmInstSetOperand (insn, 0, operand);
-        operand.cval.cvValue.cvIval = stack_size;
-        ArmInstSetOperand (insn, 1, operand);
-
-        operand.vreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
-        insn = (ArmInst)List_Prev ((void *)vpop_insn);
-        insn->opcode = ARMINST_OP_ADD_reg;
-        ArmInstSetOperand (insn, 2, operand);
-        insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_const);
-        ArmInstSetOperand (insn, 0, operand);
-        operand.cval.cvValue.cvIval = stack_size;
-        ArmInstSetOperand (insn, 1, operand);
+        if  (insn->opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInstGetOperand (insn, 0)->ds), "\t@ Recover the stack pointer."))
+        {
+            insn = (ArmInst) List_Next((void *)insn);
+            if  (is_simm8 (stack_size))
+            {
+                operand.cval.cvValue.cvIval = stack_size;
+                ArmInstSetOperand (insn, 2, operand);
+            }
+            else
+            {
+                operand.vreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
+                insn->opcode = ARMINST_OP_ADD_reg;
+                ArmInstSetOperand (insn, 2, operand);
+                insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_const);
+                ArmInstSetOperand (insn, 0, operand);
+                operand.cval.cvValue.cvIval = stack_size;
+                ArmInstSetOperand (insn, 1, operand);
+            }
+            break;
+        }
     }
 
     /* 设置要压栈、出栈的寄存器。  */
@@ -2480,26 +2513,34 @@ static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata)
     commit (inst->bb, p, 1, pmydata);
 
     /* 初始化帧指针。  */
+    p = tree (pmydata->tree_nodes, STRING, NULL, NULL);
+    p->operand.ds = dyn_string_new (32);
+    dyn_string_insert_cstr (p->operand.ds, 0, "\t@ Set up the frame pointer.");
+    commit (inst->bb, p, 1, pmydata);
+
     tmp = tree (pmydata->tree_nodes, simm8, NULL, NULL);
     tmp->operand.cval.cvValue.cvIval = 100;
     p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
     p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
     p = tree (pmydata->tree_nodes, ADD, p, tmp);
-    p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, -1, GENERAL_REGS);
-
+    p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, FP_REGNUM, GENERAL_REGS);
     commit (inst->bb, p, burmArm32_reg_NT, pmydata);
 
     pivot = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
     pivot->operand.vreg = p->operand.vreg;
 
     /* 移动栈顶指针。  */
+    p = tree (pmydata->tree_nodes, STRING, NULL, NULL);
+    p->operand.ds = dyn_string_new (32);
+    dyn_string_insert_cstr (p->operand.ds, 0, "\t@ Decrement the stack pointer.");
+    commit (inst->bb, p, 1, pmydata);
+
     p = tree (pmydata->tree_nodes, simm8, NULL, NULL);
     p->operand.cval.cvValue.cvIval = 100;
     tmp = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
     tmp->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
     p = tree (pmydata->tree_nodes, SUB, tmp, p);
     p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
-
     commit (inst->bb, p, burmArm32_reg_NT, pmydata);
 
     for(  curs=(IRInst *)InterCodeGetCursor (inst->bb->cfg->code, inst)
@@ -2602,13 +2643,17 @@ static BOOL translate_exit (IRInst inst, PINTERNAL_DATA pmydata)
     }
 
     /* 移动栈顶指针。  */
+    p = tree (pmydata->tree_nodes, STRING, NULL, NULL);
+    p->operand.ds = dyn_string_new (32);
+    dyn_string_insert_cstr (p->operand.ds, 0, "\t@ Recover the stack pointer.");
+    commit (inst->bb, p, 1, pmydata);
+
     p = tree (pmydata->tree_nodes, simm8, NULL, NULL);
     p->operand.cval.cvValue.cvIval = 100;
     vreg = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
     vreg->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
     p = tree (pmydata->tree_nodes, ADD, vreg, p);
     p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
-
     commit (inst->bb, p, burmArm32_reg_NT, pmydata);
 
     /* 将callee_save寄存器弹出。  */
@@ -2898,7 +2943,7 @@ if_convertArm32 (control_flow_graph func)
        ;  block!=NULL
        ;  block = (basic_block *) List_Prev((void *)block)
        )
-        printf("%d    %d\n", (*block)->index, find_if_block (*block));
+        find_if_block (*block);
 
     List_Destroy(&blocks);
 }

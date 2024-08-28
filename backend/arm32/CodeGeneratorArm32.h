@@ -208,6 +208,7 @@ ArmInst ArmInstInsertBefore (ArmInst insn, enum ArmInstOperator opcode);
 vreg_tArm32 ArmInstGetOperandAsReg(ArmInst inst, int index);
 BOOL ArmInst_is_call (ArmInst inst);
 const char *ArmInstGetTypeString(enum ArmInstOperator Operator);
+BOOL ArmInst_is_move (ArmInst instr);
 
 /* procs in linearscan.c */
 void LinearScanAllocator (control_flow_graph fn, struct avl_table *virtual_regs);

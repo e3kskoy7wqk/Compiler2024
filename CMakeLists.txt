@@ -102,7 +102,7 @@ set(BACKEND_SRCS
     backend/arm32/CodeGeneratorArm32.h
     backend/arm32/ArmInst.c
     backend/arm32/linearscan.c
-    backend/arm32/graph_coloring.c
+    backend/arm32/ra-colorize.c
 )
 
 # 中间IR源代码集合

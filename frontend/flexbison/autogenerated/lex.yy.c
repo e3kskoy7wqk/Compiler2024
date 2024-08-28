@@ -1,6 +1,6 @@
-#line 2 "lex.yy.c"
+#line 1 "lex.yy.c"
 
-#line 4 "lex.yy.c"
+#line 3 "lex.yy.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -532,8 +532,8 @@ int yy_flex_debug = 0;
 #define YY_MORE_ADJ 0
 #define YY_RESTORE_YY_MORE_OFFSET
 char *yytext;
-#line 1 "/home/pi/compiler/frontend/flexbison/lex.l"
-#line 2 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 1 "D:/compiler/frontend/flexbison/lex.l"
+#line 2 "D:/compiler/frontend/flexbison/lex.l"
 /*****************************************************************************
 File       : lex.l
 Title      : The lex scanner for SysY2022.
@@ -556,22 +556,19 @@ History    :
 
 int LineNum = 1; /* 行号  */
 int Column; /*列号  */
-#line 560 "lex.yy.c"
+#line 559 "lex.yy.c"
 
-#line 562 "lex.yy.c"
+#line 561 "lex.yy.c"
 
 #define INITIAL 0
 #define COMMENT 1
 #define INLINECOMMENT 2
 
-#ifndef YY_NO_UNISTD_H
-/* Special case for "unistd.h", since it is non-ANSI. We include it way
- * down here because we want the user's section 1 to have been scanned first.
- * The user has a chance to override it with an option.
- */
-#include <unistd.h>
-#endif
-
+/*windows compatibility case*/
+#include <io.h>
+#define isatty _isatty
+#define fileno _fileno
+    
 #ifndef YY_EXTRA_TYPE
 #define YY_EXTRA_TYPE void *
 #endif
@@ -777,12 +774,12 @@ YY_DECL
 		}
 
 	{
-#line 37 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 37 "D:/compiler/frontend/flexbison/lex.l"
 
 
-#line 40 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 40 "D:/compiler/frontend/flexbison/lex.l"
  
-#line 786 "lex.yy.c"
+#line 782 "lex.yy.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -841,234 +838,234 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 41 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 41 "D:/compiler/frontend/flexbison/lex.l"
 { Column = Column + yyleng; }        /* 忽略空白符  */
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 42 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 42 "D:/compiler/frontend/flexbison/lex.l"
 { LineNum = LineNum + 1; Column = 1; }    /* 匹配到换行符，行数+1  */
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 43 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 43 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_INT); }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 44 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 44 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_FLOAT); }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 45 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 45 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_CONST); }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 46 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 46 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_VOID); }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 47 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 47 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_BREAK); }
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 48 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 48 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_CONTINUE); }
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 49 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 49 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_RETURN); }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 50 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 50 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_IF); }
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 51 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 51 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_ELSE); }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 52 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 52 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_WHILE); }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 53 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 53 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_FOR); }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 54 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 54 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_LT); }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 55 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 55 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_LTEQ); }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 56 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 56 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_GT); }
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 57 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 57 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_GTEQ); }
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 58 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 58 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_EQUALS); }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 59 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 59 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_NOTEQ); }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 60 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 60 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_ASSIGN); }
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 61 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 61 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_PLUS); }
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 62 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 62 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_MINUS); }
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 63 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 63 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_MULT); }
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 64 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 64 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_DIV); }
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 65 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 65 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_MOD); }
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 66 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 66 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_EXCLAIM); }
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 67 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 67 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_ANDAND); }
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 68 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 68 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_OROR); }
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 69 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 69 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_SEMI); }
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 70 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 70 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_COLON); }
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 71 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 71 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_COMMA); }
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 72 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 72 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_LPAREN); }
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 73 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 73 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_RPAREN); }
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 74 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 74 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_LCURLY); }
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 75 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 75 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_RCURLY); }
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 76 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 76 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_LBRACK); }
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 77 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 77 "D:/compiler/frontend/flexbison/lex.l"
 { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_RBRACK); }
 	YY_BREAK
 case 38:
 YY_RULE_SETUP
-#line 79 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 79 "D:/compiler/frontend/flexbison/lex.l"
 { BEGIN COMMENT; Column = Column + yyleng; }
 	YY_BREAK
 case 39:
 YY_RULE_SETUP
-#line 80 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 80 "D:/compiler/frontend/flexbison/lex.l"
 { BEGIN INLINECOMMENT; Column = Column + yyleng; }
 	YY_BREAK
 case 40:
 YY_RULE_SETUP
-#line 82 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 82 "D:/compiler/frontend/flexbison/lex.l"
 { BEGIN(INITIAL); Column = Column + yyleng; }
 	YY_BREAK
 case 41:
 /* rule 41 can match eol */
 YY_RULE_SETUP
-#line 83 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 83 "D:/compiler/frontend/flexbison/lex.l"
 { LineNum++; Column = 1; }
 	YY_BREAK
 case 42:
 YY_RULE_SETUP
-#line 84 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 84 "D:/compiler/frontend/flexbison/lex.l"
 { ; Column = Column + yyleng; }
 	YY_BREAK
 case YY_STATE_EOF(COMMENT):
-#line 85 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 85 "D:/compiler/frontend/flexbison/lex.l"
 { fprintf(stderr, "%d: Unterminated comment\n", LineNum); exit(1); }
 	YY_BREAK
 case 43:
 /* rule 43 can match eol */
 YY_RULE_SETUP
-#line 87 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 87 "D:/compiler/frontend/flexbison/lex.l"
 { BEGIN INITIAL; LineNum++; Column = 1; }
 	YY_BREAK
 case 44:
 YY_RULE_SETUP
-#line 88 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 88 "D:/compiler/frontend/flexbison/lex.l"
 { Column = Column + yyleng; }
 	YY_BREAK
 case 45:
 YY_RULE_SETUP
-#line 90 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 90 "D:/compiler/frontend/flexbison/lex.l"
 {
                                   yylval.node = parseCreateIconNode ((unsigned)strtoul(yytext, NULL, 10), TYP_INT, LineNum, Column);
                                   Column = Column + yyleng;
@@ -1077,7 +1074,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 46:
 YY_RULE_SETUP
-#line 96 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 96 "D:/compiler/frontend/flexbison/lex.l"
 {
                                   yylval.node = parseCreateIconNode ((unsigned)strtoul(yytext, NULL, 8), TYP_INT, LineNum, Column);
                                   Column = Column + yyleng;
@@ -1086,7 +1083,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 47:
 YY_RULE_SETUP
-#line 102 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 102 "D:/compiler/frontend/flexbison/lex.l"
 {
                                   yylval.node = parseCreateIconNode ((unsigned)strtoul(yytext, NULL, 16), TYP_INT, LineNum, Column);
                                   Column = Column + yyleng;
@@ -1095,7 +1092,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 48:
 YY_RULE_SETUP
-#line 108 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 108 "D:/compiler/frontend/flexbison/lex.l"
 {
                                   yylval.node = parseCreateFconNode((float)strtod(yytext, NULL), LineNum, Column);
                                   Column = Column + yyleng;
@@ -1104,7 +1101,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 49:
 YY_RULE_SETUP
-#line 114 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 114 "D:/compiler/frontend/flexbison/lex.l"
 {
                                   yylval.node = parseCreateFconNode((float)atof(yytext), LineNum, Column);
                                   Column = Column + yyleng;
@@ -1113,7 +1110,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 50:
 YY_RULE_SETUP
-#line 120 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 120 "D:/compiler/frontend/flexbison/lex.l"
 {
                                   yylval.node = parseCreateNameNode(yytext,yyleng, LineNum, Column);
                                   Column = Column + yyleng;
@@ -1122,10 +1119,10 @@ YY_RULE_SETUP
 	YY_BREAK
 case 51:
 YY_RULE_SETUP
-#line 126 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 126 "D:/compiler/frontend/flexbison/lex.l"
 ECHO;
 	YY_BREAK
-#line 1129 "lex.yy.c"
+#line 1125 "lex.yy.c"
 case YY_STATE_EOF(INITIAL):
 case YY_STATE_EOF(INLINECOMMENT):
 	yyterminate();
@@ -2131,7 +2128,7 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 126 "/home/pi/compiler/frontend/flexbison/lex.l"
+#line 126 "D:/compiler/frontend/flexbison/lex.l"
 
 int yywrap()
 {

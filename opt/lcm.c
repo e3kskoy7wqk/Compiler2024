@@ -112,7 +112,7 @@ should_skip (IRInst instr)
         return !pure_function (instr->bb->cfg->code, IRInstGetOperand (instr, 1)->var);
 
     case IRINST_OP_load:
-        return is_global_var (IRInstGetOperand (instr, 1)->var);
+        return is_global_var (IRInstGetOperand (instr, 1)->var) && !IRInstGetOperand (instr, 1)->var->sdVar.sdvConst;
     }
     return FALSE;
 }
