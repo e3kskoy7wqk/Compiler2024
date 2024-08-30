@@ -270,11 +270,11 @@ FindRoots (SymTab stab, basic_block block, varpool_node_set set)
                     ((HTNode *) arg0->param)->rchild = (HTNode *) arg2->param;
                     ((HTNode *) arg1->param)->parent = (HTNode *) arg0->param;
                     ((HTNode *) arg2->param)->parent = (HTNode *) arg0->param;
-                    if  (bitmap_count_bits (arg0->use_chain) > 1 ||
-                         (bitmap_count_bits (arg0->use_chain) == 1 &&
-                         (!InterCodeGetInstByID (block->cfg->code, bitmap_first_set_bit (arg0->use_chain)) ||
-                         (*instr)->opcode != InterCodeGetInstByID (block->cfg->code, bitmap_first_set_bit (arg0->use_chain))->opcode ||
-                         !bitmap_bit_p (region, InterCodeGetInstByID (block->cfg->code, bitmap_first_set_bit (arg0->use_chain))->uid))))
+                    if  (bitmap_count_bits (arg0->_uses) > 1 ||
+                         (bitmap_count_bits (arg0->_uses) == 1 &&
+                         (!InterCodeGetInstByID (block->cfg->code, bitmap_first_set_bit (arg0->_uses)) ||
+                         (*instr)->opcode != InterCodeGetInstByID (block->cfg->code, bitmap_first_set_bit (arg0->_uses))->opcode ||
+                         !bitmap_bit_p (region, InterCodeGetInstByID (block->cfg->code, bitmap_first_set_bit (arg0->_uses))->uid))))
                     {
                         ((HTNode *) arg0->param)->prio = get_priority ((*instr)->opcode);
                         ((HTNode *) arg0->param)->is_root = TRUE;

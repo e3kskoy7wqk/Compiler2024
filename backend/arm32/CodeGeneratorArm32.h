@@ -1,3 +1,4 @@
+
 #ifndef MR
 #error  Define "MR" to an empty string if using managed data, "*" otherwise.
 #endif
@@ -7,39 +8,28 @@
 struct ArmInst;
 typedef struct ArmInst MR ArmInst;
 
-union Arm_Operand;
-typedef union Arm_Operand MR Arm_Operand;
-
-struct BfunctionArm32;
-typedef struct BfunctionArm32 MR BfunctionArm32;
-
-struct BblockArm32;
-typedef struct BblockArm32 MR BblockArm32;
-
-struct vreg_tArm32;
-typedef struct vreg_tArm32 MR vreg_tArm32;
+struct tree;
+typedef struct tree MR NODEPTR_TYPE;
 
 /*---------------------------------------------------------------------------*/
 
-#define R0_REGNUM         0 /* First CORE register  */
-#define R1_REGNUM         1 /* Second CORE register  */
+#define R0_REGNUM         0     /* First CORE register  */
 #define FP_REGNUM                   11
-#define IP_REGNUM        12 /* Scratch register  */
-#define SP_REGNUM        13 /* Stack pointer  */
-#define LR_REGNUM        14 /* Return address register  */
-#define PC_REGNUM        15 /* Program counter  */
+#define IP_REGNUM        12     /* Scratch register  */
+#define SP_REGNUM        13     /* Stack pointer  */
+#define LR_REGNUM        14     /* Return address register  */
+#define PC_REGNUM        15     /* Program counter  */
 
 #define SPILL_REG        IP_REGNUM
 
 #define LAST_ARM_REGNUM  15
-
 #define FIRST_VFP_REGNUM 16
 
 #define LAST_VFP_REGNUM \
-  (FIRST_VFP_REGNUM + 31)
+    (FIRST_VFP_REGNUM + 31)
 
 #define IS_VFP_REGNUM(REGNUM) \
-  (((REGNUM) >= FIRST_VFP_REGNUM) && ((REGNUM) <= LAST_VFP_REGNUM))
+    (((REGNUM) >= FIRST_VFP_REGNUM) && ((REGNUM) <= LAST_VFP_REGNUM))
 
 #define VREG(X)  (FIRST_VFP_REGNUM + (X))
 
@@ -53,6 +43,16 @@ typedef struct vreg_tArm32 MR vreg_tArm32;
 
 #define UNITS_PER_WORD  4
 
+#define STATE_TYPE void*
+#define OP_LABEL(p) ((p)->op)
+#define LEFT_CHILD(p) ((p)->kids[0])
+#define RIGHT_CHILD(p) ((p)->kids[1])
+#define STATE_LABEL(p) ((p)->state_label)
+#define PANIC printf
+
+/* Note: 需要跟arm32.c中的值保持一致。  */
+#define burmArm32_reg_NT 2
+
 /* Register classes.  */
 enum reg_classArm32
 {
@@ -63,30 +63,18 @@ enum reg_classArm32
     LIM_REG_CLASSES
 };
 
-struct vreg_tArm32 {
-    int vregno;
-    int hard_num;
-    int spill_slot;
-
-    /* 寄存器描述符。  */
-    enum reg_classArm32 rclass;
-    LIST base_offset;           /* pointer to struct base_offset */
-};
-
-struct locationArm32
+struct BfunctionArm32
 {
-    varpool_node offset;
-    BOOL is_reg;
-    union
-    {
-        vreg_tArm32 vreg;
-        varpool_node base;
-    };
+    int NumSpills;
+    bitmap callee_saved_reg;     /* 供dwarfout使用。 */
 };
 
-
-/* Note: 需要跟arm32.c中的值保持一致。  */
-#define burmArm32_reg_NT 2
+struct BblockArm32
+{
+    LIST code;     /* contains struct ArmInst */
+    bitmap liveout, livein;
+    basic_block next_block;
+};
 
 /* Note: 需要跟arm32.brg中的值保持一致。  */
 enum    ArmInstOperator
@@ -115,56 +103,32 @@ typedef enum {
     ConditionInvalid
 } Condition;
 
-struct ArmInst {
-    /* 结点的唯一标识符。  */
-    int uid;
-
-    Condition condition;
-
-    /* 操作数代码。用于区分不同类型的指令。  */
-    enum ArmInstOperator opcode;
-
-    /* 所属基本块。  */
-    basic_block bb;
-
-    /* 各个操作数。  */
-    LIST operands;     /* contains Arm_Operand */
-};
-
-union Arm_Operand {
-    vreg_tArm32 vreg;
-    SymDef sym;
-    struct constVal cval;
-    dyn_string_t ds;
-};
-
 struct tree {
     int op;
     struct tree *kids[2];
     STATE_TYPE state_label;
     int id;
     int ref_counter;
-    union Arm_Operand operand;
+    union LIR_Opr operand;
     Condition condition;
 } ;
 
-struct BfunctionArm32
-{
-    int NumSpills;
-    bitmap callee_saved_reg;     /* 供dwarfout使用。 */
+struct ArmInst {
+    struct LIR_Op lir;
+    Condition condition;
 };
-
-struct BblockArm32
-{
-    LIST code;     /* contains struct ArmInst */
-    bitmap liveout, livein;
-    basic_block next_block;
-};
-
 
 extern int burmArm32_max_nt;
 extern short *burmArm32_nts[] ;
 extern char *burmArm32_string[] ;
+
+/* procs in CodeGeneratorArm32.c */
+vreg_t get_registerArm32 (varpool_node base, varpool_node offset, enum reg_classArm32 rclass, BOOL is_addr);
+void location_descriptorArm32 (varpool_node base, varpool_node offset, vreg_t vreg, BOOL reset, BOOL is_addr);
+void output_reg (FILE *file, vreg_t reg);
+vreg_t gen_vregArm32 (struct avl_table *virtual_regs, int vregno, enum reg_classArm32 rclass);
+void regdescArm32 (vreg_t vreg, vreg_t from, varpool_node base, varpool_node offset, BOOL is_addr);
+struct descriptor_s *get_locationArm32(vreg_t vreg);
 
 /* procs in arm32.c */
 int burmArm32_rule(STATE_TYPE state, int goalnt) ;
@@ -174,42 +138,27 @@ NODEPTR_TYPE *burmArm32_kids(NODEPTR_TYPE p, int eruleno, NODEPTR_TYPE kids[]) ;
 NODEPTR_TYPE burmArm32_child(NODEPTR_TYPE p, int index) ;
 
 /* procs in InstSelectorArm32.c */
-BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab stab, struct avl_table *virtual_regs, struct dwarf_data *ddata) ;
-void spill_inArm32 (ArmInst insn, vreg_tArm32 spill_reg, int slot, struct avl_table *virtual_regs);
-void spill_outArm32 (ArmInst insn, vreg_tArm32 spill_reg, int slot, struct avl_table *virtual_regs);
-void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtual_regs);
+BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab stab, struct avl_table *virtual_regs, struct Backend* backend, struct dwarf_data *ddata) ;
+void spill_inArm32 (ArmInst insn, vreg_t spill_reg, int slot, struct avl_table *virtual_regs);
+void spill_outArm32 (ArmInst insn, vreg_t spill_reg, int slot, struct avl_table *virtual_regs);
+void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtual_regs, struct Backend* backend);
 void if_convertArm32 (control_flow_graph func);
 
-/* procs in CodeGeneratorArm32.c */
-BOOL CodeGeneratorArm32(InterCode code, SymTab stab, const char *name, FILE *file, struct dwarf_data *ddata) ;
-vreg_tArm32 gen_vregArm32 (struct avl_table *virtual_regs, int vregno, enum reg_classArm32 rclass);
-void register_descriptorArm32 (vreg_tArm32 vreg, vreg_tArm32 from, varpool_node base, varpool_node offset, BOOL is_addr);
-vreg_tArm32 get_registerArm32 (varpool_node base, varpool_node offset, enum reg_classArm32 rclass, BOOL is_addr);
-void location_descriptorArm32 (varpool_node base, varpool_node offset, vreg_tArm32 vreg, BOOL reset, BOOL is_addr);
-BOOL is_virtual_registerArm32 (int num);
-void output_reg (FILE *file, vreg_tArm32 reg);
-void remove_locationArm32 (vreg_tArm32 vreg);
-struct base_offset *get_locationArm32(vreg_tArm32 vreg);
-
-/* procs in ArmInst.c */
-ArmInst emitArmInst (basic_block bb, enum ArmInstOperator opcode);
-void deleteArmInst(ArmInst Cursor);
+/* procs in ILocArm32.c */
+ArmInst emit_ArmInst (basic_block bb, enum ArmInstOperator opcode);
+void delete_ArmInst (ArmInst insn);
+ArmInst emit_ArmInst_before (ArmInst before, enum ArmInstOperator opcode);
+ArmInst emit_ArmInst_after (ArmInst after, enum ArmInstOperator opcode);
+LIR_Opr ArmInst_get_operand (ArmInst insn, int index);
+vreg_t ArmInst_get_as_Register (ArmInst insn, int index);
+void ArmInst_set_operand (ArmInst insn, int index, LIR_Opr operand);
 const char *ArmInstGetOperatorSpelling(enum ArmInstOperator Operator);
-void outputArmInst (ArmInst inst, FILE *file);
-Arm_Operand ArmInstGetOperand(ArmInst insn, int index);
-void ArmInstSetOperand(ArmInst insn, int index, union Arm_Operand operand);
-void outputArmCode (control_flow_graph fn, FILE *file);
+const char *ArmInstGetTypeString(enum ArmInstOperator Operator);
 int ArmInstGetNumOperands(ArmInst insn);
 BOOL ArmInstIsOutput (ArmInst inst, int index);
 void ArmInstOutput (ArmInst inst, bitmap bmp);
 void ArmInstInput (ArmInst inst, bitmap bmp);
-ArmInst ArmInstInsertAfter (ArmInst insn, enum ArmInstOperator opcode);
-ArmInst ArmInstInsertBefore (ArmInst insn, enum ArmInstOperator opcode);
-vreg_tArm32 ArmInstGetOperandAsReg(ArmInst inst, int index);
+void outputArmInst (ArmInst inst, FILE *file);
+void outputArmCode (control_flow_graph fn, FILE *file);
 BOOL ArmInst_is_call (ArmInst inst);
-const char *ArmInstGetTypeString(enum ArmInstOperator Operator);
 BOOL ArmInst_is_move (ArmInst instr);
-
-/* procs in linearscan.c */
-void LinearScanAllocator (control_flow_graph fn, struct avl_table *virtual_regs);
-void ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs);

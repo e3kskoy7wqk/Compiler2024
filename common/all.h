@@ -108,11 +108,6 @@ typedef struct edge_def MR edge;
 
 /*---------------------------------------------------------------------------*/
 
-struct tree;
-typedef struct tree MR NODEPTR_TYPE;
-
-/*---------------------------------------------------------------------------*/
-
 /* Various DIE's use offsets relative to the beginning of the
    .debug_info section to refer to each other.  */
 typedef long int dw_offset;
@@ -785,12 +780,6 @@ struct edge_def {
     void* param;
 };
 
-struct base_offset
-{
-    BOOL is_addr;
-    varpool_node base, offset;
-};
-
 /* A varpool node set is a collection of varpool nodes.  A varpool node
    can appear in multiple sets.  */
 struct varpool_node_set_def
@@ -816,7 +805,7 @@ struct varpool_node
 
     int uid;
     bitmap     _defines;
-    bitmap use_chain;
+    bitmap _uses;
 
     void* param;
 };
@@ -849,6 +838,92 @@ struct loops {
 
     /* Pointer to root of loop hierarchy tree.  */
     struct loop *tree_root;
+};
+
+struct descriptor_s
+{
+    BOOL is_addr;
+    varpool_node base, offset;
+};
+
+struct vreg_t {
+    int vregno;
+    int hard_num;
+    int spill_slot;
+
+    /* 寄存器描述符。  */
+    int rclass;
+    LIST descriptors;           /* pointer to struct descriptor_s */
+} ;
+
+struct loc_descriptor
+{
+    BOOL is_reg;
+    varpool_node offset;
+    union { vreg_t vreg; varpool_node base; };
+};
+
+
+union LIR_Opr {
+    vreg_t vreg;
+    SymDef sym;
+    struct constVal cval;
+    dyn_string_t ds;
+};
+
+struct LIR_Op {
+    /* value id for register allocation。  */
+    int uid;
+
+    /* 操作数代码。用于区分不同类型的指令。  */
+    int opcode;
+
+    /* 所属基本块。  */
+    basic_block bb;
+
+    /* 各个操作数。  */
+    LIST operands;     /* contains union LIR_Opr */
+};
+
+struct ra_class {
+    unsigned next_avail, max_num;
+    bitmap available;
+};
+
+struct Backend
+{
+    int num_caller_save_registers;
+    int caller_save_registers[128];
+    int num_callee_save_registers;
+    int callee_save_registers[128];
+    int num_physical_regs;
+
+    struct ra_class *classes;
+    int class_count;
+
+    BOOL (* is_virtual_register) (int);
+    vreg_t (* gen_vreg) (struct avl_table *, int, int);
+    void (* regdesc) (vreg_t, vreg_t, varpool_node, varpool_node, BOOL);
+    struct descriptor_s *(* get_location) (vreg_t);
+
+    bitmap (* get_live_out) (basic_block);
+    bitmap (* get_live_in) (basic_block);
+    LIST (* get_code) (basic_block);
+
+    vreg_t (* as_register) (LIR_Op, int);
+    void (* set_op) (LIR_Op, int, LIR_Opr);
+    BOOL (* op_output_p) (LIR_Op, int);
+    int (* operand_count) (LIR_Op);
+    void (* input_regs) (LIR_Op, bitmap);
+    void (* output_regs) (LIR_Op, bitmap);
+    BOOL (* is_call) (LIR_Op);
+    BOOL (* is_move) (LIR_Op);
+
+    LIR_Op (* handle_method_arguments) (LIR_Op);
+    int (* assign_spill_slot) (control_flow_graph, int);
+
+    void (* spill_in) (LIR_Op, vreg_t, int, struct avl_table *);
+    void (* spill_out) (LIR_Op, vreg_t, int, struct avl_table *);
 };
 
 
@@ -920,17 +995,9 @@ struct dwarf_data
 };
 
 
-#define STATE_TYPE void*
-#define OP_LABEL(p) ((p)->op)
-#define LEFT_CHILD(p) ((p)->kids[0])
-#define RIGHT_CHILD(p) ((p)->kids[1])
-#define STATE_LABEL(p) ((p)->state_label)
-#define PANIC printf
-
 /* Tag names and codes.  */
-
 enum dwarf_tag
-  {
+{
     DW_TAG_padding = 0x00,
     DW_TAG_array_type = 0x01,
     DW_TAG_class_type = 0x02,
@@ -979,7 +1046,7 @@ enum dwarf_tag
     DW_TAG_variant_part = 0x33,
     DW_TAG_variable = 0x34,
     DW_TAG_volatile_type = 0x35,
-  };
+};
 
 #define DW_TAG_lo_user	0x4080
 #define DW_TAG_hi_user	0xffff
@@ -990,7 +1057,7 @@ enum dwarf_tag
 
 /* Form names and codes.  */
 enum dwarf_form
-  {
+{
     DW_FORM_addr = 0x01,
     DW_FORM_block2 = 0x03,
     DW_FORM_block4 = 0x04,
@@ -1012,12 +1079,11 @@ enum dwarf_form
     DW_FORM_ref8 = 0x14,
     DW_FORM_ref_udata = 0x15,
     DW_FORM_indirect = 0x16
-  };
+};
 
 /* Attribute names and codes.  */
-
 enum dwarf_attribute
-  {
+{
     DW_AT_sibling = 0x01,
     DW_AT_location = 0x02,
     DW_AT_name = 0x03,
@@ -1095,15 +1161,14 @@ enum dwarf_attribute
     DW_AT_src_coords = 0x2104,
     DW_AT_body_begin = 0x2105,
     DW_AT_body_end = 0x2106
-  };
+};
 
 #define DW_AT_lo_user	0x2000	/* implementation-defined range start */
 #define DW_AT_hi_user	0x3ff0	/* implementation-defined range end */
 
 /* Location atom names and codes.  */
-
 enum dwarf_location_atom
-  {
+{
     DW_OP_addr = 0x03,
     DW_OP_deref = 0x06,
     DW_OP_const1u = 0x08,
@@ -1249,15 +1314,14 @@ enum dwarf_location_atom
     DW_OP_deref_size = 0x94,
     DW_OP_xderef_size = 0x95,
     DW_OP_nop = 0x96
-  };
+};
 
 #define DW_OP_lo_user	0x80	/* implementation-defined range start */
 #define DW_OP_hi_user	0xff	/* implementation-defined range end */
 
 /* Type encodings.  */
-
 enum dwarf_type
-  {
+{
     DW_ATE_void = 0x0,
     DW_ATE_address = 0x1,
     DW_ATE_boolean = 0x2,
@@ -1267,14 +1331,14 @@ enum dwarf_type
     DW_ATE_signed_char = 0x6,
     DW_ATE_unsigned = 0x7,
     DW_ATE_unsigned_char = 0x8
-  };
+};
 
 #define	DW_ATE_lo_user 0x80
 #define	DW_ATE_hi_user 0xff
 
 /* line number opcodes */
 enum dwarf_line_number_ops
-  {
+{
     DW_LNS_extended_op = 0,
     DW_LNS_copy = 1,
     DW_LNS_advance_pc = 2,
@@ -1285,19 +1349,19 @@ enum dwarf_line_number_ops
     DW_LNS_set_basic_block = 7,
     DW_LNS_const_add_pc = 8,
     DW_LNS_fixed_advance_pc = 9
-  };
+};
 
 /* line number extended opcodes */
 enum dwarf_line_number_x_ops
-  {
+{
     DW_LNE_end_sequence = 1,
     DW_LNE_set_address = 2,
     DW_LNE_define_file = 3
-  };
+};
 
 /* call frame information */
 enum dwarf_call_frame_info
-  {
+{
     DW_CFA_advance_loc = 0x40,
     DW_CFA_offset = 0x80,
     DW_CFA_restore = 0xc0,
@@ -1318,7 +1382,7 @@ enum dwarf_call_frame_info
     DW_CFA_def_cfa_offset = 0x0e,
     /* SGI/MIPS specific */
     DW_CFA_MIPS_advance_loc8 = 0x1d
-  };
+};
 
 #define DW_CIE_ID	  0xffffffff
 #define DW_CIE_VERSION	  1
@@ -1332,11 +1396,11 @@ enum dwarf_call_frame_info
    entry.  The label gives the PC value associated with
    the line number entry.  */
 typedef struct dw_line_info_struct
-  {
+{
     unsigned long dw_file_num;
     unsigned long dw_line_num;
     unsigned int column_num;
-  }
+}
 dw_line_info_entry;
 
 /* Call frames are described using a sequence of Call Frame
@@ -1344,20 +1408,20 @@ dw_line_info_entry;
    and address fields are provided as possible operands;
    their use is selected by the opcode field.  */
 typedef union dw_cfi_oprnd_struct
-  {
+{
     unsigned long dw_cfi_reg_num;
     long int dw_cfi_offset;
     char *dw_cfi_addr;
-  }
+}
 dw_cfi_oprnd;
 
 typedef struct dw_cfi_struct
-  {
+{
     dw_cfi_ref dw_cfi_next;
     enum dwarf_call_frame_info dw_cfi_opc;
     dw_cfi_oprnd dw_cfi_oprnd1;
     dw_cfi_oprnd dw_cfi_oprnd2;
-  }
+}
 dw_cfi_node;
 
 /* All call frame descriptions (FDE's) in the GCC generated DWARF
@@ -1366,7 +1430,7 @@ dw_cfi_node;
    CIE obviates the need to keep track of multiple CIE's
    in the DWARF generation routines below.  */
 typedef struct dw_fde_struct
-  {
+{
     unsigned long dw_fde_offset;
     char *dw_fde_begin;
     char *dw_fde_end_prolog;
@@ -1374,12 +1438,12 @@ typedef struct dw_fde_struct
     char *dw_fde_end;
     char *dw_fde_current_label;
     dw_cfi_ref dw_fde_cfi;
-  }
+}
 dw_fde_node;
 
 /* The Debugging Information Entry (DIE) structure */
 typedef struct die_struct
-  {
+{
     enum dwarf_tag die_tag;
     dw_attr_ref die_attr;
     dw_attr_ref die_attr_last;
@@ -1392,14 +1456,14 @@ typedef struct die_struct
 
     TypDef          type;
     int label_num;
-  }
+}
 die_node;
 
 /* Each DIE may have a series of attribute/value pairs.  Values
    can take on several forms.  The forms that are used in this
    impelementation are listed below.  */
 typedef enum
-  {
+{
     dw_val_class_addr,
     dw_val_class_loc,
     dw_val_class_loc_list,
@@ -1412,16 +1476,16 @@ typedef enum
     dw_val_class_lbl_id,
     dw_val_class_section_offset,
     dw_val_class_str
-  }
+}
 dw_val_class;
 
 /* The dw_val_node describes an attibute's value, as it is
    represnted internally.  */
 typedef struct dw_val_struct
-  {
+{
     dw_val_class val_class;
     union
-      {
+    {
         char *val_addr;
         dw_loc_list_ref  val_loc_list;
         dw_loc_descr_ref val_loc;
@@ -1433,34 +1497,34 @@ typedef struct dw_val_struct
         char *val_lbl_id;
         char *val_section;
         unsigned char val_flag;
-      }
+    }
     v;
-  }
+}
 dw_val_node;
 
 /* Each DIE attribute has a field specifying the attribute kind,
    a link to the next attribute in the chain, and an attribute value.
    Attributes are typically linked below the DIE they modify.  */
 typedef struct dw_attr_struct
-  {
+{
     enum dwarf_attribute dw_attr;
     dw_attr_ref dw_attr_next;
     dw_val_node dw_attr_val;
-  }
+}
 dw_attr_node;
 
 /* Locations in memory are described using a sequence of stack machine
    operations.  */
 typedef struct dw_loc_descr_struct
-  {
+{
     dw_loc_descr_ref dw_loc_next;
     enum dwarf_location_atom dw_loc_opc;
     dw_val_node dw_loc_oprnd1;
     dw_val_node dw_loc_oprnd2;
 
-  /* 供指令选择使用。  */
+    /* 供指令选择使用。  */
     int line, column;
-  }
+}
 dw_loc_descr_node;
 
 /* Location lists are ranges + location descriptions for that range,
@@ -1492,11 +1556,6 @@ pubname_entry;
 extern int LineNum;
 extern int Column;
 extern Compiler comp;
-
-extern  int num_caller_save_registers;
-extern  int caller_save_registers[];
-extern  int num_callee_save_registers;
-extern  int callee_save_registers[];
 
 
 /* EXTERN procs */
@@ -1683,7 +1742,6 @@ void bitmap_vector_free (bitmap * vec, int n_vecs);
 
 /* procs in copyprop.c */
 void copyprop (InterCode code, SymTab stab);
-void CopyPropPass (InterCode code, SymTab stab);
 BOOL local_copyprop_pass (basic_block block, varpool_node_set set);
 
 /* procs in StraightLineStrengthReduce.c */
@@ -1722,10 +1780,17 @@ void add_loc_descr (dw_loc_descr_ref *list_head, dw_loc_descr_ref descr);
 dw_loc_descr_ref mem_loc_descriptor (SymDef rtl, struct dwarf_data *ddata);
 dw_loc_descr_ref reg_loc_descriptor (unsigned reg, struct dwarf_data *ddata);
 void decls_for_scope (SymDef stmt, dw_die_ref context_die, struct dwarf_data *ddata);
-dw_loc_descr_ref based_loc_descr (unsigned reg, int offset, struct dwarf_data *ddata);
+dw_loc_descr_ref based_loc_descr (unsigned reg, unsigned fp_reg, int offset, struct dwarf_data *ddata);
 
+/* procs in CodeGeneratorArm32.c */
+BOOL CodeGeneratorArm32(InterCode code, SymTab stab, const char *name, FILE *file, struct Backend* backend, struct dwarf_data *ddata) ;
 
-#include "CodeGeneratorArm32.h"
+/* procs in ra-colorize.c */
+void ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs, struct Backend* backend);
+
+/* procs in linearscan.c */
+void LinearScanAllocator (control_flow_graph fn, struct avl_table *virtual_regs, struct Backend* backend);
+
 
 /*****************************************************************************/
 #endif

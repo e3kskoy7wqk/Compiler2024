@@ -66,7 +66,7 @@ void varpool_node_set_update (control_flow_graph cfun, varpool_node_set set, BOO
             for (i = 0; i < count; ++i)
             {
                 vnode = varpool_node_set_add(set, IRInstGetOperand (*Cursor, i));
-                bitmap_set_bit(IRInstIsOutput(*Cursor, i) ? vnode->_defines : vnode->use_chain, (*Cursor)->uid);
+                bitmap_set_bit(IRInstIsOutput(*Cursor, i) ? vnode->_defines : vnode->_uses, (*Cursor)->uid);
             }
         }
     }
@@ -105,7 +105,7 @@ free_varpool_node_set (varpool_node_set set)
         List_Destroy (&iter->addr);
         List_Destroy (&iter->value);
         BITMAP_XFREE (iter->_defines);
-        BITMAP_XFREE (iter->use_chain);
+        BITMAP_XFREE (iter->_uses);
     }
 
     avl_destroy (set->nodes, (avl_item_func *) free);
@@ -125,7 +125,7 @@ varpool_node_set_add (varpool_node_set set, ssa_name node)
         vnode->addr = List_Create();
         vnode->value = List_Create();
         vnode->_defines = BITMAP_XMALLOC ();
-        vnode->use_chain = BITMAP_XMALLOC ();
+        vnode->_uses = BITMAP_XMALLOC ();
         vnode->var = node->var;
         vnode->version = node->version;
         avl_insert (set->nodes, vnode);

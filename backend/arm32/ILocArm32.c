@@ -1,82 +1,89 @@
 #include <string.h>
 #include "all.h"
+#include "CodeGeneratorArm32.h"
 
-ArmInst emitArmInst (basic_block bb, enum ArmInstOperator opcode)
+ArmInst
+emit_ArmInst (basic_block bb, enum ArmInstOperator opcode)
 {
     ArmInst insn;
-    insn = (ArmInst)List_NewLast (((BblockArm32)bb->param)->code, sizeof (*insn ) );
+    insn = (ArmInst) List_NewLast (((struct BblockArm32 *)bb->param)->code, sizeof (*insn ) );
     memset (insn, 0, sizeof (*insn));
-    insn->operands = List_Create ();
-    insn->bb = bb;
-    insn->opcode = opcode;
+    insn->lir.operands = List_Create ();
+    insn->lir.bb = bb;
+    insn->lir.opcode = opcode;
     return insn;
 }
 
-void deleteArmInst(ArmInst Cursor)
+void
+delete_ArmInst (ArmInst insn)
 {
-    Arm_Operand iter;
+    LIR_Opr iter;
 
-    if ( Cursor)
+    if ( insn)
     {
-        if  (Cursor->opcode == ARMINST_OP_STRING)
+        if  (insn->lir.opcode == ARMINST_OP_STRING)
         {
-            for(  iter = (Arm_Operand)List_First(Cursor->operands)
+            for(  iter = (LIR_Opr)List_First(insn->lir.operands)
                ;  iter != NULL
-               ;  iter = (Arm_Operand)List_Next ((void *)iter)
+               ;  iter = (LIR_Opr)List_Next ((void *)iter)
                )
                dyn_string_delete (iter->ds);
         }
-        List_Destroy (&Cursor->operands);
-        List_Delete (Cursor);
+        List_Destroy (&insn->lir.operands);
+        List_Delete (insn);
     }
 }
 
-ArmInst ArmInstInsertBefore (ArmInst insn, enum ArmInstOperator opcode)
+ArmInst
+emit_ArmInst_before (ArmInst before, enum ArmInstOperator opcode)
 {
-    ArmInst new_insn;
-    new_insn = (ArmInst)List_NewBefore (((BblockArm32)insn->bb->param)->code, insn, sizeof (*insn ) );
-    memset (new_insn, 0, sizeof (*new_insn));
-    new_insn->operands = List_Create ();
-    new_insn->bb = insn->bb;
-    new_insn->opcode = opcode;
-    return new_insn;
+    ArmInst prev;
+    prev = (ArmInst)List_NewBefore (((struct BblockArm32 *)before->lir.bb->param)->code, before, sizeof (*before ) );
+    memset (prev, 0, sizeof (*prev));
+    prev->lir.operands = List_Create ();
+    prev->lir.bb = before->lir.bb;
+    prev->lir.opcode = opcode;
+    return prev;
 }
 
-ArmInst ArmInstInsertAfter (ArmInst insn, enum ArmInstOperator opcode)
+ArmInst
+emit_ArmInst_after (ArmInst after, enum ArmInstOperator opcode)
 {
-    ArmInst new_insn;
-    new_insn = (ArmInst)List_NewAfter (((BblockArm32)insn->bb->param)->code, insn, sizeof (*insn ) );
-    memset (new_insn, 0, sizeof (*new_insn));
-    new_insn->operands = List_Create ();
-    new_insn->bb = insn->bb;
-    new_insn->opcode = opcode;
-    return new_insn;
+    ArmInst next;
+    next = (ArmInst)List_NewAfter (((struct BblockArm32 *)after->lir.bb->param)->code, after, sizeof (*after ) );
+    memset (next, 0, sizeof (*next));
+    next->lir.operands = List_Create ();
+    next->lir.bb = after->lir.bb;
+    next->lir.opcode = opcode;
+    return next;
 }
 
-Arm_Operand ArmInstGetOperand(ArmInst insn, int index)
+LIR_Opr
+ArmInst_get_operand (ArmInst insn, int index)
 {
-    Arm_Operand Cursor;
-    int length = List_Card(insn->operands);
+    LIR_Opr Cursor;
+    int length = List_Card(insn->lir.operands);
 
     while (length <= index)
     {
-        Cursor = (Arm_Operand)List_NewLast(insn->operands, sizeof (*Cursor));
+        Cursor = (LIR_Opr)List_NewLast(insn->lir.operands, sizeof (*Cursor));
         memset ( Cursor, 0, sizeof ( *Cursor ) );
         length++;
     }
-    for(  Cursor=(Arm_Operand)List_First(insn->operands)
-        ;  Cursor!=NULL && index>0
-        ;  Cursor = (Arm_Operand)List_Next((void *)Cursor), index--
-        )
+    for(  Cursor=(LIR_Opr)List_First(insn->lir.operands)
+       ;  Cursor!=NULL && index>0
+       ;  Cursor = (LIR_Opr)List_Next((void *)Cursor), index--
+       )
         ;
     return Cursor; 
 }
 
-vreg_tArm32 ArmInstGetOperandAsReg(ArmInst inst, int index)
+vreg_t
+ArmInst_get_as_Register (ArmInst insn, int index)
 {
-    Arm_Operand operand;
-    operand = ArmInstGetOperand (inst, index);
-    switch (inst->opcode)
+    LIR_Opr operand;
+    operand = ArmInst_get_operand (insn, index);
+    switch ((enum ArmInstOperator) insn->lir.opcode)
     {
     case ARMINST_OP_LDR_const:
     case ARMINST_OP_LDR_label:
@@ -161,16 +168,17 @@ vreg_tArm32 ArmInstGetOperandAsReg(ArmInst inst, int index)
         if  (index == 0 || index == 1 || index == 2)
             return operand->vreg;
         break;
-      /* FIXME: There are probably missing cases here, double check.  */
+        /* FIXME: There are probably missing cases here, double check.  */
     }
 
     return NULL;
 }
 
-void ArmInstSetOperand(ArmInst insn, int index, union Arm_Operand operand)
+void
+ArmInst_set_operand (ArmInst insn, int index, LIR_Opr operand)
 {
-    Arm_Operand Cursor = ArmInstGetOperand (insn, index);
-    *Cursor = operand;
+    LIR_Opr Cursor = ArmInst_get_operand (insn, index);
+    memcpy (Cursor, operand, sizeof (*operand));
 }
 
 const char *ArmInstGetOperatorSpelling(enum ArmInstOperator Operator)
@@ -204,15 +212,15 @@ const char *ArmInstGetTypeString(enum ArmInstOperator Operator)
 
 int ArmInstGetNumOperands(ArmInst insn)
 {
-    if  (insn->opcode == ARMINST_OP_PUSH ||
-         insn->opcode == ARMINST_OP_POP ||
-         insn->opcode == ARMINST_OP_VPOP ||
-         insn->opcode == ARMINST_OP_VPUSH)
+    if  (insn->lir.opcode == ARMINST_OP_PUSH ||
+         insn->lir.opcode == ARMINST_OP_POP ||
+         insn->lir.opcode == ARMINST_OP_VPOP ||
+         insn->lir.opcode == ARMINST_OP_VPUSH)
     {
-        return  List_Card (insn->operands);
+        return  List_Card (insn->lir.operands);
     }
 
-    switch (insn->opcode)
+    switch ((enum ArmInstOperator) insn->lir.opcode)
     {
 #define OPDEF(OPNAME, OPCODE, name_string, type, operand_count) \
     case ARMINST_ ## OPNAME: return operand_count;
@@ -227,7 +235,7 @@ int ArmInstGetNumOperands(ArmInst insn)
 BOOL
 ArmInstIsOutput (ArmInst inst, int index)
 {
-    switch (inst->opcode)
+    switch ((enum ArmInstOperator) inst->lir.opcode)
     {
     case ARMINST_OP_LDR_const:
     case ARMINST_OP_LDR_label:
@@ -301,7 +309,7 @@ ArmInstIsOutput (ArmInst inst, int index)
 
     case ARMINST_OP_REGISTER:
         return FALSE;
-      /* FIXME: There are probably missing cases here, double check.  */
+        /* FIXME: There are probably missing cases here, double check.  */
     }
     return FALSE;
 }
@@ -314,18 +322,18 @@ ArmInstOutput (ArmInst inst, bitmap bmp)
 
     bitmap_clear (bmp);
 
-    switch (inst->opcode)
+    switch ((enum ArmInstOperator) inst->lir.opcode)
     {
     case ARMINST_OP_STRING:
     case ARMINST_OP_LABEL:
         break;
-      /* FIXME: There are probably missing cases here, double check.  */
+        /* FIXME: There are probably missing cases here, double check.  */
     default:
         bitmap_set_bit (bmp, PC_REGNUM);
         break;
     }
 
-    switch (inst->opcode)
+    switch ((enum ArmInstOperator) inst->lir.opcode)
     {
     case ARMINST_OP_BL:
         bitmap_set_bit (bmp, LR_REGNUM);
@@ -335,20 +343,20 @@ ArmInstOutput (ArmInst inst, bitmap bmp)
     case ARMINST_OP_B:
         bitmap_set_bit (bmp, IP_REGNUM);
         break;
-      /* FIXME: There are probably missing cases here, double check.  */
+        /* FIXME: There are probably missing cases here, double check.  */
     default:
         break;
     }
 
     for (i = 0; i < ArmInstGetNumOperands(inst); i++)
         if  (ArmInstIsOutput (inst, i))
-            bitmap_set_bit (bmp, ArmInstGetOperand (inst, i)->vreg->vregno);
+            bitmap_set_bit (bmp, ArmInst_get_operand (inst, i)->vreg->vregno);
 }
 
 BOOL
 ArmInst_is_call (ArmInst inst)
 {
-    return inst->opcode == ARMINST_OP_BL;
+    return inst->lir.opcode == ARMINST_OP_BL;
 }
 
 /* 获取指令使用的所有寄存器编号，使用位图接受返回值。  */
@@ -359,7 +367,7 @@ ArmInstInput (ArmInst inst, bitmap bmp)
 
     bitmap_clear (bmp);
 
-    switch (inst->opcode)
+    switch ((enum ArmInstOperator) inst->lir.opcode)
     {
     case ARMINST_OP_STRING:
     case ARMINST_OP_LABEL:
@@ -370,7 +378,7 @@ ArmInstInput (ArmInst inst, bitmap bmp)
         break;
     }
 
-    switch (inst->opcode)
+    switch ((enum ArmInstOperator) inst->lir.opcode)
     {
     case ARMINST_OP_BL:
     case ARMINST_OP_B:
@@ -385,7 +393,7 @@ ArmInstInput (ArmInst inst, bitmap bmp)
         break;
     }
 
-    switch (inst->opcode)
+    switch ((enum ArmInstOperator) inst->lir.opcode)
     {
     case ARMINST_OP_LDR_const:
     case ARMINST_OP_LDR_label:
@@ -418,13 +426,13 @@ ArmInstInput (ArmInst inst, bitmap bmp)
     case ARMINST_OP_MOV_reg_LSL_imm:
     case ARMINST_OP_MOV_reg_LSR_imm:
     case ARMINST_OP_MOV_reg_ASR_imm:
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 1)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 1)->vreg->vregno);
         break;
 
     case ARMINST_OP_BX:
     case ARMINST_OP_CMP_imm:
     case ARMINST_OP_VCMPz:
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 0)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 0)->vreg->vregno);
         break;
 
     case ARMINST_OP_ADD_reg:
@@ -444,15 +452,15 @@ ArmInstInput (ArmInst inst, bitmap bmp)
     case ARMINST_OP_SUB_reg_LSL_imm:
     case ARMINST_OP_SUB_reg_LSR_imm:
     case ARMINST_OP_SUB_reg_ASR_imm:
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 1)->vreg->vregno);
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 2)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 1)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 2)->vreg->vregno);
         break;
 
     case ARMINST_OP_STR_reg_reg:
     case ARMINST_OP_STR_reg_LSL_imm:
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 0)->vreg->vregno);
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 1)->vreg->vregno);
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 2)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 0)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 1)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 2)->vreg->vregno);
         break;
 
     case ARMINST_OP_STR_reg:
@@ -464,28 +472,28 @@ ArmInstInput (ArmInst inst, bitmap bmp)
     case ARMINST_OP_CMP_reg_LSL_imm:
     case ARMINST_OP_CMP_reg_LSR_imm:
     case ARMINST_OP_CMP_reg_ASR_imm:
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 0)->vreg->vregno);
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 1)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 0)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 1)->vreg->vregno);
         break;
 
     case ARMINST_OP_MLA:
     case ARMINST_OP_MLS:
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 1)->vreg->vregno);
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 2)->vreg->vregno);
-        bitmap_set_bit (bmp, ArmInstGetOperand (inst, 3)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 1)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 2)->vreg->vregno);
+        bitmap_set_bit (bmp, ArmInst_get_operand (inst, 3)->vreg->vregno);
         break;
 
     case ARMINST_OP_PUSH:
     case ARMINST_OP_VPUSH:
         for (i = 0; i < ArmInstGetNumOperands(inst); i++)
         {
-            bitmap_set_bit (bmp, ArmInstGetOperand (inst, i)->vreg->vregno);
+            bitmap_set_bit (bmp, ArmInst_get_operand (inst, i)->vreg->vregno);
         }
         break;
 
     case ARMINST_OP_REGISTER:
         break;
-      /* FIXME: There are probably missing cases here, double check.  */
+        /* FIXME: There are probably missing cases here, double check.  */
     }
 }
 
@@ -538,63 +546,63 @@ outputArmInst (ArmInst inst, FILE *file)
     case ConditionInvalid: break;
     }
 
-    if  (!strcmp (ArmInstGetOperatorSpelling (inst->opcode), "<undef>"))
+    if  (!strcmp (ArmInstGetOperatorSpelling (inst->lir.opcode), "<undef>"))
     {
-        if  (ARMINST_OP_LABEL == inst->opcode)
+        if  (ARMINST_OP_LABEL == inst->lir.opcode)
         {
-            fprintf (file, ".L%d:", ArmInstGetOperand (inst, 0)->cval.cvValue.cvIval);
+            fprintf (file, ".L%d:", ArmInst_get_operand (inst, 0)->cval.cvValue.cvIval);
         }
-        else if (ARMINST_OP_LDR_label == inst->opcode)
+        else if (ARMINST_OP_LDR_label == inst->lir.opcode)
         {
             fprintf (file, "\tmovw%s\t", str);
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
-            fprintf (file, ", #:lower16:%s\n", stGetSymName(ArmInstGetOperand (inst, 1)->sym));
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
+            fprintf (file, ", #:lower16:%s\n", stGetSymName(ArmInst_get_operand (inst, 1)->sym));
             fprintf (file, "\tmovt%s\t", str);
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
-            fprintf (file, ", #:upper16:%s", stGetSymName(ArmInstGetOperand (inst, 1)->sym));
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
+            fprintf (file, ", #:upper16:%s", stGetSymName(ArmInst_get_operand (inst, 1)->sym));
         }
-        else if (ARMINST_OP_STRING == inst->opcode)
+        else if (ARMINST_OP_STRING == inst->lir.opcode)
         {
-            fprintf (file, "%s", dyn_string_buf (ArmInstGetOperand (inst, 0)->ds));
+            fprintf (file, "%s", dyn_string_buf (ArmInst_get_operand (inst, 0)->ds));
         }
-        else if (ARMINST_OP_LDR_const == inst->opcode)
+        else if (ARMINST_OP_LDR_const == inst->lir.opcode)
         {
-            if      (is_imm8m(ArmInstGetOperand (inst, 1)->cval.cvValue.cvIval))
+            if      (is_imm8m(ArmInst_get_operand (inst, 1)->cval.cvValue.cvIval))
             {
                 fprintf (file, "\tmov%s\t", str);
-                output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
-                fprintf (file, ", 0x%x", ArmInstGetOperand (inst, 1)->cval.cvValue.cvIval);
+                output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
+                fprintf (file, ", 0x%x", ArmInst_get_operand (inst, 1)->cval.cvValue.cvIval);
             }
-            else if (ArmInstGetOperand (inst, 1)->cval.cvValue.cvIval < 65536 && ArmInstGetOperand (inst, 1)->cval.cvValue.cvIval >= 0)
+            else if (ArmInst_get_operand (inst, 1)->cval.cvValue.cvIval < 65536 && ArmInst_get_operand (inst, 1)->cval.cvValue.cvIval >= 0)
             {
                 fprintf (file, "\tmovw%s\t", str);
-                output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
-                fprintf (file, ", 0x%x", ArmInstGetOperand (inst, 1)->cval.cvValue.cvIval);
+                output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
+                fprintf (file, ", 0x%x", ArmInst_get_operand (inst, 1)->cval.cvValue.cvIval);
             }
             else
             {
                 fprintf (file, "\tmovw%s\t", str);
-                output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
-                fprintf (file, ", 0x%x\n", (int)(unsigned short)ArmInstGetOperand (inst, 1)->cval.cvValue.cvIval);
+                output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
+                fprintf (file, ", 0x%x\n", (int)(unsigned short)ArmInst_get_operand (inst, 1)->cval.cvValue.cvIval);
                 fprintf (file, "\tmovt%s\t", str);
-                output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
-                fprintf (file, ", 0x%x", (int)(unsigned short)((ArmInstGetOperand (inst, 1)->cval.cvValue.cvIval >> 16) & 0xffff));
+                output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
+                fprintf (file, ", 0x%x", (int)(unsigned short)((ArmInst_get_operand (inst, 1)->cval.cvValue.cvIval >> 16) & 0xffff));
             }
         }
-        else if (ARMINST_OP_VMRS == inst->opcode)
+        else if (ARMINST_OP_VMRS == inst->lir.opcode)
         {
             fprintf (file, "\tvmrs\tAPSR_nzcv, FPSCR");
         }
     }
     else
     {
-        fprintf (file, "\t%s%s%s\t", ArmInstGetOperatorSpelling (inst->opcode), str, ArmInstGetTypeString (inst->opcode));
+        fprintf (file, "\t%s%s%s\t", ArmInstGetOperatorSpelling (inst->lir.opcode), str, ArmInstGetTypeString (inst->lir.opcode));
 
-        switch (inst->opcode)
+        switch ((enum ArmInstOperator) inst->lir.opcode)
         {
         case ARMINST_OP_MOV_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
-            fprintf (file, ", #%d", ArmInstGetOperand (inst, 1)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
+            fprintf (file, ", #%d", ArmInst_get_operand (inst, 1)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_MOV_reg:
@@ -603,21 +611,21 @@ outputArmInst (ArmInst inst, FILE *file)
         case ARMINST_OP_vcvt_signedToFloatingPoint:
         case ARMINST_OP_vcvt_floatingPointToSigned:
         case ARMINST_OP_VNEG:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
             break;
 
         case ARMINST_OP_B:
-            fprintf (file, ".L%d", ArmInstGetOperand (inst, 0)->cval.cvValue.cvIval);
+            fprintf (file, ".L%d", ArmInst_get_operand (inst, 0)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_BL:
-            fprintf (file, "%s", stGetSymName(ArmInstGetOperand (inst, 0)->sym));
+            fprintf (file, "%s", stGetSymName(ArmInst_get_operand (inst, 0)->sym));
             break;
 
         case ARMINST_OP_BX:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             break;
 
         case ARMINST_OP_ADD_reg:
@@ -636,7 +644,7 @@ outputArmInst (ArmInst inst, FILE *file)
             for (i = 0; i < ArmInstGetNumOperands(inst); i++)
             {
                 fprintf (file, "%s", comma);
-                output_reg (file, ArmInstGetOperand (inst, i)->vreg);
+                output_reg (file, ArmInst_get_operand (inst, i)->vreg);
                 comma = ", ";
             }
             break;
@@ -647,34 +655,34 @@ outputArmInst (ArmInst inst, FILE *file)
         case ARMINST_OP_LSR_imm:
         case ARMINST_OP_LSL_imm:
         case ARMINST_OP_ASR_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
-            fprintf (file, ", #%d", ArmInstGetOperand (inst, 2)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
+            fprintf (file, ", #%d", ArmInst_get_operand (inst, 2)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_CMP_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
-            fprintf (file, ", #%d", ArmInstGetOperand (inst, 1)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
+            fprintf (file, ", #%d", ArmInst_get_operand (inst, 1)->cval.cvValue.cvIval);
             break;
     
         case ARMINST_OP_LDR_reg:
         case ARMINST_OP_STR_reg:
         case ARMINST_OP_VLDR_reg:
         case ARMINST_OP_VSTR_reg:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", [");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
             fprintf (file, "]");
             break;
 
         case ARMINST_OP_LDR_reg_reg:
         case ARMINST_OP_STR_reg_reg:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", [");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 2)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 2)->vreg);
             fprintf (file, "]");
             break;
 
@@ -682,10 +690,10 @@ outputArmInst (ArmInst inst, FILE *file)
         case ARMINST_OP_STR_imm:
         case ARMINST_OP_VLDR_imm:
         case ARMINST_OP_VSTR_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", [");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
-            fprintf (file, ", #%d]", ArmInstGetOperand (inst, 2)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
+            fprintf (file, ", #%d]", ArmInst_get_operand (inst, 2)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_REGISTER:
@@ -709,85 +717,84 @@ outputArmInst (ArmInst inst, FILE *file)
             for (i = 0; i < ArmInstGetNumOperands(inst); i++)
             {
                 fprintf (file, "%s", comma);
-                output_reg (file, ArmInstGetOperand (inst, i)->vreg);
+                output_reg (file, ArmInst_get_operand (inst, i)->vreg);
                 comma = ", ";
             }
             fprintf (file, "}");
             break;
 
         case ARMINST_OP_VCMPz:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", #0");
             break;
 
         case ARMINST_OP_LDR_reg_LSL_imm:
         case ARMINST_OP_STR_reg_LSL_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", [");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 2)->vreg);
-            fprintf (file, ", lsl #%d]", ArmInstGetOperand (inst, 3)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 2)->vreg);
+            fprintf (file, ", lsl #%d]", ArmInst_get_operand (inst, 3)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_ADD_reg_LSL_imm:
         case ARMINST_OP_SUB_reg_LSL_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 2)->vreg);
-            fprintf (file, ", lsl #%d", ArmInstGetOperand (inst, 3)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 2)->vreg);
+            fprintf (file, ", lsl #%d", ArmInst_get_operand (inst, 3)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_ADD_reg_LSR_imm:
         case ARMINST_OP_SUB_reg_LSR_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 2)->vreg);
-            fprintf (file, ", lsr #%d", ArmInstGetOperand (inst, 3)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 2)->vreg);
+            fprintf (file, ", lsr #%d", ArmInst_get_operand (inst, 3)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_ADD_reg_ASR_imm:
         case ARMINST_OP_SUB_reg_ASR_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 2)->vreg);
-            fprintf (file, ", asr #%d", ArmInstGetOperand (inst, 3)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 2)->vreg);
+            fprintf (file, ", asr #%d", ArmInst_get_operand (inst, 3)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_CMP_reg_LSL_imm:
         case ARMINST_OP_MOV_reg_LSL_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
-            fprintf (file, ", lsl #%d", ArmInstGetOperand (inst, 2)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
+            fprintf (file, ", lsl #%d", ArmInst_get_operand (inst, 2)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_CMP_reg_LSR_imm:
         case ARMINST_OP_MOV_reg_LSR_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
-            fprintf (file, ", lsr #%d", ArmInstGetOperand (inst, 2)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
+            fprintf (file, ", lsr #%d", ArmInst_get_operand (inst, 2)->cval.cvValue.cvIval);
             break;
 
         case ARMINST_OP_CMP_reg_ASR_imm:
         case ARMINST_OP_MOV_reg_ASR_imm:
-            output_reg (file, ArmInstGetOperand (inst, 0)->vreg);
+            output_reg (file, ArmInst_get_operand (inst, 0)->vreg);
             fprintf (file, ", ");
-            output_reg (file, ArmInstGetOperand (inst, 1)->vreg);
-            fprintf (file, ", asr #%d", ArmInstGetOperand (inst, 2)->cval.cvValue.cvIval);
+            output_reg (file, ArmInst_get_operand (inst, 1)->vreg);
+            fprintf (file, ", asr #%d", ArmInst_get_operand (inst, 2)->cval.cvValue.cvIval);
             break;
         }
     }
 
-    fprintf(file, "\t@ Sequence number: %d",
-        inst->uid);
+    fprintf(file, "\t@ Sequence number: %d", inst->lir.uid);
     fprintf (file, "\n");
 }
 
@@ -795,26 +802,22 @@ static BOOL
 isNopCopy (ArmInst instr)
 {
     BOOL retval;
-    if  ((instr->opcode == ARMINST_OP_MOV_reg ||
-         instr->opcode == ARMINST_OP_VMOV) &&
-         ArmInstGetOperandAsReg (instr, 0)->hard_num == ArmInstGetOperandAsReg (instr, 1)->hard_num &&
-         ArmInstGetOperandAsReg (instr, 0)->hard_num != -1)
-    {
+    if  ((instr->lir. opcode == ARMINST_OP_MOV_reg ||
+         instr->lir.opcode == ARMINST_OP_VMOV) &&
+         ArmInst_get_as_Register (instr, 0)->hard_num == ArmInst_get_as_Register (instr, 1)->hard_num &&
+         ArmInst_get_as_Register (instr, 0)->hard_num != -1)
         retval = TRUE;
-    }
     else
-    {
         retval = FALSE;
-    }
     return retval;
 }
 
 BOOL
 ArmInst_is_move (ArmInst instr)
 {
-    return (instr->opcode == ARMINST_OP_MOV_reg ||
-            (instr->opcode == ARMINST_OP_VMOV &&
-            ArmInstGetOperandAsReg (instr, 1)->rclass == ArmInstGetOperandAsReg (instr, 0)->rclass));
+    return (instr->lir.opcode == ARMINST_OP_MOV_reg ||
+            (instr->lir.opcode == ARMINST_OP_VMOV &&
+            ArmInst_get_as_Register (instr, 1)->rclass == ArmInst_get_as_Register (instr, 0)->rclass));
 }
 
 void
@@ -832,17 +835,17 @@ outputArmCode (control_flow_graph fn, FILE *file)
        ;  bb = (basic_block *)List_Next((void *)bb)
        )
     {
-        for(  insn=(ArmInst)List_First(((BblockArm32)(*bb)->param)->code)
+        for(  insn=(ArmInst)List_First(((struct BblockArm32 *)(*bb)->param)->code)
            ;  insn!=NULL
            ;  insn = (ArmInst)List_Next((void *)insn)
            )
         {
             /* 避免生成冗余的goto指令。  */
             if  (! List_Next ((void *)insn) &&
-                 insn->opcode == ARMINST_OP_B &&
+                 insn->lir.opcode == ARMINST_OP_B &&
                  insn->condition == ConditionAL &&
                  List_Next((void *)bb) &&
-                 (*(IRInst *) List_First ((*(basic_block *)List_Next((void *)bb))->insns))->uid == ArmInstGetOperand (insn, 0)->cval.cvValue.cvIval)
+                 (*(IRInst *) List_First ((*(basic_block *)List_Next((void *)bb))->insns))->uid == ArmInst_get_operand (insn, 0)->cval.cvValue.cvIval)
                 continue;
 
             if  (! isNopCopy (insn))

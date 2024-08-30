@@ -166,7 +166,7 @@ static BOOL sccp_evaluate (IRInst I, varpool_node_set set)
             BOOL is_memset = FALSE;
             
             src0 = varpool_get_node (set, IRInstGetOperand(I, 1));
-            for(  curs=InterCodeGetCursor (I->bb->cfg->code, InterCodeGetInstByID(I->bb->cfg->code, bitmap_first_set_bit (dst->use_chain)))
+            for(  curs=InterCodeGetCursor (I->bb->cfg->code, InterCodeGetInstByID(I->bb->cfg->code, bitmap_first_set_bit (dst->_uses)))
                ;  curs!=NULL && (*curs)->opcode != IRINST_OP_call
                ;  curs = (IRInst *)List_Next((void *)curs)
                )
@@ -530,7 +530,7 @@ static void updateInstrUses (varpool_node vnode, bitmap InstWorkList)
     bitmap_iterator bi;
     unsigned i;
 
-    for (bmp_iter_set_init (&bi, vnode->use_chain, 0, &i);
+    for (bmp_iter_set_init (&bi, vnode->_uses, 0, &i);
          bmp_iter_set (&bi, &i);
          bmp_iter_next (&bi, &i))
 

@@ -4,6 +4,7 @@
 #include <unistd.h>
 #endif
 #include "all.h"
+#include "CodeGeneratorArm32.h"
 
 /* Standard register usage.  */
 
@@ -107,6 +108,7 @@ typedef struct
     varpool_node_set set;               /* 中间代码操作数的集合。  */
     control_flow_graph func;            /* 控制流图。  */
     struct avl_table *virtual_regs;     /* 虚拟寄存器的集合。  */
+    struct Backend* backend;            /* 后端配置结构体。  */
     struct dwarf_data *ddata;           /* 调式信息。  */
     SymTab stab;                        /* 符号表。  */
     struct avl_table *reg_map;          /* 变量到底层AST结点的映射。  */
@@ -139,14 +141,14 @@ struct ConstantPoolCache
 };
 
 /* Note: 此枚举需要与arm32.brg中的值保持一致。  */
-enum { imm12 = 1, simm8 = 2, CNSTI4 =  4, INDIRI4 = 7, 
-       ADD=9, SDIV=10, MUL=11, SUB=12, JUMPV=19, LABELV=20,
-       LDR=21, STR=24, REGISTER=28, RSB=29, CMP=30, imm16=31,
-       CLZ=38, LSR=39, MOV=40, BL=41, LABEL=42, BX=43, PUSH=44, POP=45,
-       STRING=46, VMOV=47, VMUL=48, VADD=49, VSUB=50, VDIV=51,
-       vcvt_signedToFloatingPoint=52, vcvt_floatingPointToSigned=53,
-       VNEG=54, VCMP=55, VCMPz=56, VMRS=57, VSTR=58, VLDR=59,
-       imm10=60, VPUSH=61, VPOP=62, LSL=63, ASR=64, imm5=65 };
+enum { imm12 = 1, simm8 = 2, CNSTI4 =  3, INDIRI4 = 4, 
+       ADD=5, SDIV=6, MUL=7, SUB=8, JUMPV=9, LABELV=10,
+       LDR=11, STR=12, REGISTER=13, RSB=14, CMP=15, imm16=16,
+       CLZ=17, LSR=18, MOV=19, BL=20, LABEL=21, BX=22, PUSH=23, POP=24,
+       STRING=25, VMOV=26, VMUL=27, VADD=28, VSUB=29, VDIV=30,
+       vcvt_signedToFloatingPoint=31, vcvt_floatingPointToSigned=32,
+       VNEG=33, VCMP=34, VCMPz=35, VMRS=36, VSTR=37, VLDR=38,
+       imm10=39, VPUSH=40, VPOP=41, LSL=42, ASR=43, imm5=44 };
 
 /* iburg产生的程序不会释放动态分配的内存，这样会造成内存泄漏。为了解决这一
    问题，我们定义一个内存池，让iburg产生的程序从内存池中分配内存，当一
@@ -210,8 +212,11 @@ static void dumpCover(NODEPTR_TYPE p, int goalnt, int indent)
 {
     int eruleno = burmArm32_rule(STATE_LABEL(p), goalnt);
     short *nts = burmArm32_nts[eruleno];
-    NODEPTR_TYPE kids[100];
+    NODEPTR_TYPE *kids;
     int i;
+
+    /* Note: 此数组的大小不能小于burmArm32_nts数组的大小。  */
+    kids = (NODEPTR_TYPE *) xmalloc (sizeof (NODEPTR_TYPE) * 100);
 
     burmArm32_kids(p, eruleno, kids);
     for (i = 0; nts[i]; i++)
@@ -219,24 +224,29 @@ static void dumpCover(NODEPTR_TYPE p, int goalnt, int indent)
     for (i = 0; i < indent; i++)
         fprintf(stderr, " ");
     fprintf(stderr, "%s\n", burmArm32_string[eruleno]);
+
+    free (kids);
 }
 
 /* 指令选择。  */
-static void burmArm32_select(basic_block bb, NODEPTR_TYPE p, int goalnt, struct avl_table *virtual_regs)
+static void burmArm32_select(basic_block bb, NODEPTR_TYPE p, int goalnt, struct avl_table *virtual_regs, struct Backend* backend)
 {
     int eruleno = burmArm32_rule(STATE_LABEL(p), goalnt);
     short *nts = burmArm32_nts[eruleno];
-    NODEPTR_TYPE kids[100];
+    NODEPTR_TYPE *kids;
     int i;
     int counter = 0;
     ArmInst insn;
-    union Arm_Operand operand;
+    union LIR_Opr operand;
+
+    /* Note: 此数组的大小不能小于burmArm32_nts数组的大小。  */
+    kids = (NODEPTR_TYPE *) xmalloc (sizeof (NODEPTR_TYPE) * 100);
 
     burmArm32_kids(p, eruleno, kids);
     for (i = 0; nts[i]; i++)
-        burmArm32_select(bb, kids[i], nts[i], virtual_regs);
+        burmArm32_select(bb, kids[i], nts[i], virtual_regs, backend);
 
-    insn = emitArmInst(bb, (enum ArmInstOperator)eruleno);
+    insn = emit_ArmInst (bb, (enum ArmInstOperator)eruleno);
     insn->condition = p->condition;
     switch ((enum ArmInstOperator)eruleno)
     {
@@ -249,15 +259,15 @@ static void burmArm32_select(basic_block bb, NODEPTR_TYPE p, int goalnt, struct 
     case ARMINST_OP_vcvt_signedToFloatingPoint:
     case ARMINST_OP_vcvt_floatingPointToSigned:
     case ARMINST_OP_VNEG:
-        ArmInstSetOperand (insn, 0, p->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(p)->operand);
         break;
 
     case ARMINST_OP_BL:
     case ARMINST_OP_B:
     case ARMINST_OP_BX:
     case ARMINST_OP_VCMPz:
-        ArmInstSetOperand (insn, 0, LEFT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 0, &LEFT_CHILD(p)->operand);
         break;
 
     case ARMINST_OP_ADD_reg:
@@ -275,89 +285,89 @@ static void burmArm32_select(basic_block bb, NODEPTR_TYPE p, int goalnt, struct 
     case ARMINST_OP_VMUL:
     case ARMINST_OP_VDIV:
     case ARMINST_OP_VSUB:
-        ArmInstSetOperand (insn, 0, p->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(p)->operand);
-        ArmInstSetOperand (insn, 2, RIGHT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 2, &RIGHT_CHILD(p)->operand);
         break;
 
     case ARMINST_OP_CMP_reg:
     case ARMINST_OP_CMP_imm:
     case ARMINST_OP_VCMP:
-        ArmInstSetOperand (insn, 0, LEFT_CHILD(p)->operand);
-        ArmInstSetOperand (insn, 1, RIGHT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 0, &LEFT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 1, &RIGHT_CHILD(p)->operand);
         break;
 
     case ARMINST_OP_MLA:
-        ArmInstSetOperand (insn, 0, p->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(LEFT_CHILD(p))->operand);
-        ArmInstSetOperand (insn, 2, RIGHT_CHILD(LEFT_CHILD(p))->operand);
-        ArmInstSetOperand (insn, 3, RIGHT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(LEFT_CHILD(p))->operand);
+        ArmInst_set_operand (insn, 2, &RIGHT_CHILD(LEFT_CHILD(p))->operand);
+        ArmInst_set_operand (insn, 3, &RIGHT_CHILD(p)->operand);
         break;
 
     case ARMINST_OP_MLS:
-        ArmInstSetOperand (insn, 0, p->operand);
-        ArmInstSetOperand (insn, 3, LEFT_CHILD(p)->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(RIGHT_CHILD(p))->operand);
-        ArmInstSetOperand (insn, 2, RIGHT_CHILD(RIGHT_CHILD(p))->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
+        ArmInst_set_operand (insn, 3, &LEFT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(RIGHT_CHILD(p))->operand);
+        ArmInst_set_operand (insn, 2, &RIGHT_CHILD(RIGHT_CHILD(p))->operand);
         break;
 
     case ARMINST_OP_LDR_reg:
     case ARMINST_OP_VLDR_reg:
-        ArmInstSetOperand (insn, 0, p->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(LEFT_CHILD(p))->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(LEFT_CHILD(p))->operand);
         break;
 
     case ARMINST_OP_LDR_reg_reg:
     case ARMINST_OP_LDR_imm:
     case ARMINST_OP_VLDR_imm:
-        ArmInstSetOperand (insn, 0, p->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(LEFT_CHILD(LEFT_CHILD(p)))->operand);
-        ArmInstSetOperand (insn, 2, RIGHT_CHILD(LEFT_CHILD(LEFT_CHILD(p)))->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(LEFT_CHILD(LEFT_CHILD(p)))->operand);
+        ArmInst_set_operand (insn, 2, &RIGHT_CHILD(LEFT_CHILD(LEFT_CHILD(p)))->operand);
         break;
 
     case ARMINST_OP_STR_reg:
     case ARMINST_OP_VSTR_reg:
-        ArmInstSetOperand (insn, 0, LEFT_CHILD(p)->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(RIGHT_CHILD(p))->operand);
+        ArmInst_set_operand (insn, 0, &LEFT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(RIGHT_CHILD(p))->operand);
         break;
 
     case ARMINST_OP_STR_reg_reg:
     case ARMINST_OP_STR_imm:
     case ARMINST_OP_VSTR_imm:
-        ArmInstSetOperand (insn, 0, LEFT_CHILD(p)->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(LEFT_CHILD(RIGHT_CHILD(p)))->operand);
-        ArmInstSetOperand (insn, 2, RIGHT_CHILD(LEFT_CHILD(RIGHT_CHILD(p)))->operand);
+        ArmInst_set_operand (insn, 0, &LEFT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(LEFT_CHILD(RIGHT_CHILD(p)))->operand);
+        ArmInst_set_operand (insn, 2, &RIGHT_CHILD(LEFT_CHILD(RIGHT_CHILD(p)))->operand);
         break;
 
     case ARMINST_OP_REGISTER:
-        deleteArmInst(insn);
+        delete_ArmInst (insn);
         break;
 
     case ARMINST_OP_LABEL:
     case ARMINST_OP_STRING:
-        ArmInstSetOperand (insn, 0, p->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
         break;
 
     case ARMINST_OP_PUSH:
     case ARMINST_OP_POP:
-        for (i = 0; i < num_callee_save_registers; i++)
+        for (i = 0; i < backend->num_callee_save_registers; i++)
         {
-            if  (!IS_VFP_REGNUM (callee_save_registers[i]))
+            if  (!IS_VFP_REGNUM (backend->callee_save_registers[i]))
             {
-                operand.vreg = gen_vregArm32(virtual_regs, callee_save_registers[i], NO_REGS);
-                ArmInstSetOperand (insn, counter++, operand);
+                operand.vreg = backend->gen_vreg (virtual_regs, backend->callee_save_registers[i], NO_REGS);
+                ArmInst_set_operand (insn, counter++, &operand);
             }
         }
         break;
 
     case ARMINST_OP_VPUSH:
     case ARMINST_OP_VPOP:
-        for (i = 0; i < num_callee_save_registers; i++)
+        for (i = 0; i < backend->num_callee_save_registers; i++)
         {
-            if  (IS_VFP_REGNUM (callee_save_registers[i]))
+            if  (IS_VFP_REGNUM (backend->callee_save_registers[i]))
             {
-                operand.vreg = gen_vregArm32(virtual_regs, callee_save_registers[i], NO_REGS);
-                ArmInstSetOperand (insn, counter++, operand);
+                operand.vreg = backend->gen_vreg (virtual_regs, backend->callee_save_registers[i], NO_REGS);
+                ArmInst_set_operand (insn, counter++, &operand);
             }
         }
         break;
@@ -366,17 +376,17 @@ static void burmArm32_select(basic_block bb, NODEPTR_TYPE p, int goalnt, struct 
         break;
 
     case ARMINST_OP_LDR_reg_LSL_imm:
-        ArmInstSetOperand (insn, 0, p->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(LEFT_CHILD(LEFT_CHILD(p)))->operand);
-        ArmInstSetOperand (insn, 2, LEFT_CHILD(RIGHT_CHILD(LEFT_CHILD(LEFT_CHILD(p))))->operand);
-        ArmInstSetOperand (insn, 3, RIGHT_CHILD(RIGHT_CHILD(LEFT_CHILD(LEFT_CHILD(p))))->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(LEFT_CHILD(LEFT_CHILD(p)))->operand);
+        ArmInst_set_operand (insn, 2, &LEFT_CHILD(RIGHT_CHILD(LEFT_CHILD(LEFT_CHILD(p))))->operand);
+        ArmInst_set_operand (insn, 3, &RIGHT_CHILD(RIGHT_CHILD(LEFT_CHILD(LEFT_CHILD(p))))->operand);
         break;
 
     case ARMINST_OP_STR_reg_LSL_imm:
-        ArmInstSetOperand (insn, 0, LEFT_CHILD (p)->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD (LEFT_CHILD (RIGHT_CHILD (p)))->operand);
-        ArmInstSetOperand (insn, 2, LEFT_CHILD (RIGHT_CHILD (LEFT_CHILD (RIGHT_CHILD (p))))->operand);
-        ArmInstSetOperand (insn, 3, RIGHT_CHILD (RIGHT_CHILD (LEFT_CHILD (RIGHT_CHILD (p))))->operand);
+        ArmInst_set_operand (insn, 0, &LEFT_CHILD (p)->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD (LEFT_CHILD (RIGHT_CHILD (p)))->operand);
+        ArmInst_set_operand (insn, 2, &LEFT_CHILD (RIGHT_CHILD (LEFT_CHILD (RIGHT_CHILD (p))))->operand);
+        ArmInst_set_operand (insn, 3, &RIGHT_CHILD (RIGHT_CHILD (LEFT_CHILD (RIGHT_CHILD (p))))->operand);
         break;
 
     case ARMINST_OP_ADD_reg_LSL_imm:
@@ -385,28 +395,30 @@ static void burmArm32_select(basic_block bb, NODEPTR_TYPE p, int goalnt, struct 
     case ARMINST_OP_SUB_reg_LSL_imm:
     case ARMINST_OP_SUB_reg_LSR_imm:
     case ARMINST_OP_SUB_reg_ASR_imm:
-        ArmInstSetOperand (insn, 0, p->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD(p)->operand);
-        ArmInstSetOperand (insn, 2, LEFT_CHILD (RIGHT_CHILD(p))->operand);
-        ArmInstSetOperand (insn, 3, RIGHT_CHILD (RIGHT_CHILD(p))->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD(p)->operand);
+        ArmInst_set_operand (insn, 2, &LEFT_CHILD (RIGHT_CHILD(p))->operand);
+        ArmInst_set_operand (insn, 3, &RIGHT_CHILD (RIGHT_CHILD(p))->operand);
         break;
 
     case ARMINST_OP_CMP_reg_LSL_imm:
     case ARMINST_OP_CMP_reg_LSR_imm:
     case ARMINST_OP_CMP_reg_ASR_imm:
-        ArmInstSetOperand (insn, 0, LEFT_CHILD (p)->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD (RIGHT_CHILD (p))->operand);
-        ArmInstSetOperand (insn, 2, RIGHT_CHILD (RIGHT_CHILD (p))->operand);
+        ArmInst_set_operand (insn, 0, &LEFT_CHILD (p)->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD (RIGHT_CHILD (p))->operand);
+        ArmInst_set_operand (insn, 2, &RIGHT_CHILD (RIGHT_CHILD (p))->operand);
         break;
 
     case ARMINST_OP_MOV_reg_LSL_imm:
     case ARMINST_OP_MOV_reg_LSR_imm:
     case ARMINST_OP_MOV_reg_ASR_imm:
-        ArmInstSetOperand (insn, 0, p->operand);
-        ArmInstSetOperand (insn, 1, LEFT_CHILD (LEFT_CHILD (p))->operand);
-        ArmInstSetOperand (insn, 2, RIGHT_CHILD (LEFT_CHILD (p))->operand);
+        ArmInst_set_operand (insn, 0, &p->operand);
+        ArmInst_set_operand (insn, 1, &LEFT_CHILD (LEFT_CHILD (p))->operand);
+        ArmInst_set_operand (insn, 2, &RIGHT_CHILD (LEFT_CHILD (p))->operand);
         break;
     }
+
+    free (kids);
 }
 
 static void commit (basic_block block, NODEPTR_TYPE p, int goalnt, PINTERNAL_DATA pmydata)
@@ -456,12 +468,12 @@ static BOOL is_imm10(int num)
 /* 在 INSN 之前添加从溢出符号加载的指令，溢出符号存储在 SPILL_REG 中。
    我们假设不再处于 SSA，因此返回的寄存器没有设置其定值。  */
 void
-spill_inArm32 (ArmInst insn, vreg_tArm32 spill_reg, int slot, struct avl_table *virtual_regs)
+spill_inArm32 (ArmInst insn, vreg_t spill_reg, int slot, struct avl_table *virtual_regs)
 {
-    vreg_tArm32 tmpreg;
-    union Arm_Operand operand;
+    vreg_t tmpreg;
+    union LIR_Opr operand;
     ArmInst new_insn;
-    struct base_offset *constVal;
+    struct descriptor_s *constVal;
 
     constVal = get_locationArm32 (spill_reg);
     if  (constVal != NULL &&
@@ -471,11 +483,11 @@ spill_inArm32 (ArmInst insn, vreg_tArm32 spill_reg, int slot, struct avl_table *
          constVal->base->var->sdVar.sdvConst)
     {
         /* 加载常量的值。  */
-        new_insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_const);
+        new_insn = emit_ArmInst_before (insn, ARMINST_OP_LDR_const);
         operand.vreg = spill_reg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.cval.cvValue.cvIval = GetConstVal (constVal->base->var, 0)->cvValue.cvIval;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
     }
     else if (constVal != NULL &&
              constVal->is_addr &&
@@ -484,61 +496,61 @@ spill_inArm32 (ArmInst insn, vreg_tArm32 spill_reg, int slot, struct avl_table *
              (!constVal->base->var->sdVar.sdvConst || constVal->base->var->sdType->tdTypeKind > TYP_lastIntrins))
     {
         /* 加载全局变量地址。  */
-        new_insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_label);
+        new_insn = emit_ArmInst_before (insn, ARMINST_OP_LDR_label);
         operand.vreg = spill_reg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.sym = constVal->base->var;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
     }
     else if ((spill_reg->rclass==VFP_REGS ? is_imm10 : isDisp) (slot))
     {
-        new_insn = ArmInstInsertBefore (insn, spill_reg->rclass==VFP_REGS ? ARMINST_OP_VLDR_imm : ARMINST_OP_LDR_imm);
+        new_insn = emit_ArmInst_before (insn, spill_reg->rclass==VFP_REGS ? ARMINST_OP_VLDR_imm : ARMINST_OP_LDR_imm);
         operand.vreg = spill_reg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.vreg = gen_vregArm32 (virtual_regs, SP_REGNUM, GENERAL_REGS);
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
         operand.cval.cvValue.cvIval = slot;
-        ArmInstSetOperand (new_insn, 2, operand);
+        ArmInst_set_operand (new_insn, 2, &operand);
     }
     else if (spill_reg->rclass == VFP_REGS)
     {
         tmpreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
-        new_insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_const);
+        new_insn = emit_ArmInst_before (insn, ARMINST_OP_LDR_const);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.cval.cvValue.cvIval = slot;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
 
-        new_insn = ArmInstInsertBefore (insn, ARMINST_OP_ADD_reg);
+        new_insn = emit_ArmInst_before (insn, ARMINST_OP_ADD_reg);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
         operand.vreg = gen_vregArm32 (virtual_regs, SP_REGNUM, GENERAL_REGS);
-        ArmInstSetOperand (new_insn, 2, operand);
+        ArmInst_set_operand (new_insn, 2, &operand);
 
-        new_insn = ArmInstInsertBefore (insn, ARMINST_OP_VLDR_reg);
+        new_insn = emit_ArmInst_before (insn, ARMINST_OP_VLDR_reg);
         operand.vreg = spill_reg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
     }
     else
     {
         tmpreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
-        new_insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_const);
+        new_insn = emit_ArmInst_before (insn, ARMINST_OP_LDR_const);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.cval.cvValue.cvIval = slot;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
 
-        new_insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_reg_reg);
+        new_insn = emit_ArmInst_before (insn, ARMINST_OP_LDR_reg_reg);
         operand.vreg = spill_reg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.vreg = gen_vregArm32 (virtual_regs, SP_REGNUM, GENERAL_REGS);
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 2, operand);
+        ArmInst_set_operand (new_insn, 2, &operand);
     }
 }
 
@@ -547,12 +559,12 @@ spill_inArm32 (ArmInst insn, vreg_tArm32 spill_reg, int slot, struct avl_table *
    type, return it in *PTMP2, otherwise store NULL into it.  We assume we are
    out of SSA so the returned register does not have its use updated.  */
 void
-spill_outArm32 (ArmInst insn, vreg_tArm32 spill_reg, int slot, struct avl_table *virtual_regs)
+spill_outArm32 (ArmInst insn, vreg_t spill_reg, int slot, struct avl_table *virtual_regs)
 {
-    vreg_tArm32 tmpreg;
-    union Arm_Operand operand;
+    vreg_t tmpreg;
+    union LIR_Opr operand;
     ArmInst new_insn;
-    struct base_offset *constVal;
+    struct descriptor_s *constVal;
 
     constVal = get_locationArm32 (spill_reg);
     if  (constVal != NULL &&
@@ -573,63 +585,63 @@ spill_outArm32 (ArmInst insn, vreg_tArm32 spill_reg, int slot, struct avl_table 
     }
     else if ((spill_reg->rclass==VFP_REGS ? is_imm10 : isDisp) (slot))
     {
-        new_insn = ArmInstInsertAfter (insn, spill_reg->rclass==VFP_REGS ? ARMINST_OP_VSTR_imm : ARMINST_OP_STR_imm);
+        new_insn = emit_ArmInst_after (insn, spill_reg->rclass==VFP_REGS ? ARMINST_OP_VSTR_imm : ARMINST_OP_STR_imm);
         operand.vreg = spill_reg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.vreg = gen_vregArm32 (virtual_regs, SP_REGNUM, GENERAL_REGS);
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
         operand.cval.cvValue.cvIval = slot;
-        ArmInstSetOperand (new_insn, 2, operand);
+        ArmInst_set_operand (new_insn, 2, &operand);
     }
     else if (spill_reg->rclass == VFP_REGS)
     {
         tmpreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
-        new_insn = ArmInstInsertAfter (insn, ARMINST_OP_LDR_const);
+        new_insn = emit_ArmInst_after (insn, ARMINST_OP_LDR_const);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.cval.cvValue.cvIval = slot;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
 
-        new_insn = ArmInstInsertAfter (new_insn, ARMINST_OP_ADD_reg);
+        new_insn = emit_ArmInst_after (new_insn, ARMINST_OP_ADD_reg);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
         operand.vreg = gen_vregArm32 (virtual_regs, SP_REGNUM, GENERAL_REGS);
-        ArmInstSetOperand (new_insn, 2, operand);
+        ArmInst_set_operand (new_insn, 2, &operand);
 
-        new_insn = ArmInstInsertAfter (new_insn, ARMINST_OP_VSTR_reg);
+        new_insn = emit_ArmInst_after (new_insn, ARMINST_OP_VSTR_reg);
         operand.vreg = spill_reg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
     }
     else
     {
         tmpreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
-        new_insn = ArmInstInsertAfter (insn, ARMINST_OP_LDR_const);
+        new_insn = emit_ArmInst_after (insn, ARMINST_OP_LDR_const);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.cval.cvValue.cvIval = slot;
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
 
-        new_insn = ArmInstInsertAfter (new_insn, ARMINST_OP_STR_reg_reg);
+        new_insn = emit_ArmInst_after (new_insn, ARMINST_OP_STR_reg_reg);
         operand.vreg = spill_reg;
-        ArmInstSetOperand (new_insn, 0, operand);
+        ArmInst_set_operand (new_insn, 0, &operand);
         operand.vreg = gen_vregArm32 (virtual_regs, SP_REGNUM, GENERAL_REGS);
-        ArmInstSetOperand (new_insn, 1, operand);
+        ArmInst_set_operand (new_insn, 1, &operand);
         operand.vreg = tmpreg;
-        ArmInstSetOperand (new_insn, 2, operand);
+        ArmInst_set_operand (new_insn, 2, &operand);
     }
 }
 
-void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtual_regs)
+void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtual_regs, struct Backend* backend)
 {
     basic_block *bb;
     ArmInst insn;
     int i;
     int counter;
-    union Arm_Operand operand;
+    union LIR_Opr operand;
     int stack_size;
     bitmap temp = BITMAP_XMALLOC ();
     bitmap_iterator bi;
@@ -647,15 +659,15 @@ void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtua
        ;  bb = (basic_block *) List_Next((void *)bb)
        )
     {
-        for(  insn=(ArmInst) List_First(((BblockArm32)(*bb)->param)->code)
+        for(  insn=(ArmInst) List_First(((struct BblockArm32 *)(*bb)->param)->code)
            ;  insn!=NULL
            ;  insn = (ArmInst) List_Next((void *)insn)
            )
         {
-            if  (insn->opcode == ARMINST_OP_PUSH ||
-                 insn->opcode == ARMINST_OP_POP ||
-                 insn->opcode == ARMINST_OP_VPUSH ||
-                 insn->opcode == ARMINST_OP_VPOP)
+            if  (insn->lir.opcode == ARMINST_OP_PUSH ||
+                 insn->lir.opcode == ARMINST_OP_POP ||
+                 insn->lir.opcode == ARMINST_OP_VPUSH ||
+                 insn->lir.opcode == ARMINST_OP_VPOP)
                 continue;
             ArmInstOutput (insn, temp);
             for (bmp_iter_set_init (&bi, temp, 0, &regno);
@@ -666,38 +678,38 @@ void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtua
     }
 
     /* 计算callee_saved_reg_size的值。  */
-    for (i = 0; i < num_callee_save_registers; ++i)
-        if  (bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, callee_save_registers[i]))
+    for (i = 0; i < backend->num_callee_save_registers; ++i)
+        if  (bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, backend->callee_save_registers[i]))
             func->callee_saved_reg_size += UNITS_PER_WORD;
 
     /* 找到push、pop、vpush、vpop指令的位置。  */
-    for(  insn=(ArmInst) List_First(((BblockArm32)(func->entry_block_ptr)->param)->code)
+    for(  insn=(ArmInst) List_First(((struct BblockArm32 *)(func->entry_block_ptr)->param)->code)
        ;  insn!=NULL
        ;  insn = (ArmInst) List_Next((void *)insn)
        )
     {
-        if  (insn->opcode == ARMINST_OP_PUSH)
+        if  (insn->lir.opcode == ARMINST_OP_PUSH)
         {
-            push_insn = ArmInstInsertBefore (insn, ARMINST_OP_PUSH);
-            deleteArmInst (insn);
+            push_insn = emit_ArmInst_before (insn, ARMINST_OP_PUSH);
+            delete_ArmInst (insn);
             insn = (ArmInst)List_Next((void *)push_insn);
-            vpush_insn = ArmInstInsertBefore (insn, ARMINST_OP_VPUSH);
-            deleteArmInst (insn);
+            vpush_insn = emit_ArmInst_before (insn, ARMINST_OP_VPUSH);
+            delete_ArmInst (insn);
             break;
         }
     }
-    for(  insn=(ArmInst) List_First(((BblockArm32)(func->exit_block_ptr)->param)->code)
+    for(  insn=(ArmInst) List_First(((struct BblockArm32 *)(func->exit_block_ptr)->param)->code)
        ;  insn!=NULL 
        ;  insn = (ArmInst) List_Next((void *)insn)
        )
     {
-        if  (insn->opcode == ARMINST_OP_POP)
+        if  (insn->lir.opcode == ARMINST_OP_POP)
         {
-            pop_insn = ArmInstInsertBefore (insn, ARMINST_OP_POP);
-            deleteArmInst (insn);
+            pop_insn = emit_ArmInst_before (insn, ARMINST_OP_POP);
+            delete_ArmInst (insn);
             insn = (ArmInst)List_Prev((void *)pop_insn);
-            vpop_insn = ArmInstInsertBefore (insn, ARMINST_OP_VPOP);
-            deleteArmInst (insn);
+            vpop_insn = emit_ArmInst_before (insn, ARMINST_OP_VPOP);
+            delete_ArmInst (insn);
             break;
         }
     }
@@ -728,81 +740,81 @@ void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtua
     }
 
     /* 更新帧指针偏移量。  */
-    for(  insn=(ArmInst) List_First(((BblockArm32)(func->entry_block_ptr)->param)->code)
+    for(  insn=(ArmInst) List_First(((struct BblockArm32 *)(func->entry_block_ptr)->param)->code)
        ;  insn!=NULL
        ;  insn = (ArmInst) List_Next((void *)insn)
        )
     {
-        if  (insn->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (insn, 0)->ds), "\t@ Set up the frame pointer."))
+        if  (insn->lir.opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInst_get_operand (insn, 0)->ds), "\t@ Set up the frame pointer."))
         {
             operand.cval.cvValue.cvIval = func->callee_saved_reg_size;
-            ArmInstSetOperand ((ArmInst) List_Next((void *)insn), 2, operand);
+            ArmInst_set_operand ((ArmInst) List_Next((void *)insn), 2, &operand);
             break;
         }
     }
 
     /* 更新移动栈指针的指令。  */
-    for(  insn=(ArmInst) List_First(((BblockArm32)(func->entry_block_ptr)->param)->code)
+    for(  insn=(ArmInst) List_First(((struct BblockArm32 *)(func->entry_block_ptr)->param)->code)
        ;  insn!=NULL
        ;  insn = (ArmInst) List_Next((void *)insn)
        )
     {
-        if  (insn->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (insn, 0)->ds), "\t@ Decrement the stack pointer."))
+        if  (insn->lir.opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInst_get_operand (insn, 0)->ds), "\t@ Decrement the stack pointer."))
         {
             insn = (ArmInst) List_Next((void *)insn);
             if  (is_simm8 (stack_size))
             {
                 operand.cval.cvValue.cvIval = stack_size;
-                ArmInstSetOperand (insn, 2, operand);
+                ArmInst_set_operand (insn, 2, &operand);
             }
             else
             {
                 operand.vreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
-                insn->opcode = ARMINST_OP_SUB_reg;
-                ArmInstSetOperand (insn, 2, operand);
-                insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_const);
-                ArmInstSetOperand (insn, 0, operand);
+                insn->lir.opcode = ARMINST_OP_SUB_reg;
+                ArmInst_set_operand (insn, 2, &operand);
+                insn = emit_ArmInst_before (insn, ARMINST_OP_LDR_const);
+                ArmInst_set_operand (insn, 0, &operand);
                 operand.cval.cvValue.cvIval = stack_size;
-                ArmInstSetOperand (insn, 1, operand);
+                ArmInst_set_operand (insn, 1, &operand);
             }
             break;
         }
     }
-    for(  insn=(ArmInst) List_First(((BblockArm32)(func->exit_block_ptr)->param)->code)
+    for(  insn=(ArmInst) List_First(((struct BblockArm32 *)(func->exit_block_ptr)->param)->code)
        ;  insn!=NULL
        ;  insn = (ArmInst) List_Next((void *)insn)
        )
     {
-        if  (insn->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (insn, 0)->ds), "\t@ Recover the stack pointer."))
+        if  (insn->lir.opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInst_get_operand (insn, 0)->ds), "\t@ Recover the stack pointer."))
         {
             insn = (ArmInst) List_Next((void *)insn);
             if  (is_simm8 (stack_size))
             {
                 operand.cval.cvValue.cvIval = stack_size;
-                ArmInstSetOperand (insn, 2, operand);
+                ArmInst_set_operand (insn, 2, &operand);
             }
             else
             {
                 operand.vreg = gen_vregArm32 (virtual_regs, SPILL_REG, GENERAL_REGS);
-                insn->opcode = ARMINST_OP_ADD_reg;
-                ArmInstSetOperand (insn, 2, operand);
-                insn = ArmInstInsertBefore (insn, ARMINST_OP_LDR_const);
-                ArmInstSetOperand (insn, 0, operand);
+                insn->lir.opcode = ARMINST_OP_ADD_reg;
+                ArmInst_set_operand (insn, 2, &operand);
+                insn = emit_ArmInst_before (insn, ARMINST_OP_LDR_const);
+                ArmInst_set_operand (insn, 0, &operand);
                 operand.cval.cvValue.cvIval = stack_size;
-                ArmInstSetOperand (insn, 1, operand);
+                ArmInst_set_operand (insn, 1, &operand);
             }
             break;
         }
     }
 
     /* 设置要压栈、出栈的寄存器。  */
-    for (i = 0, counter = 0; i < num_callee_save_registers; ++i)
+    for (i = 0, counter = 0; i < backend->num_callee_save_registers; ++i)
     {
-        if  (bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, callee_save_registers[i]) &&
-             !IS_VFP_REGNUM(callee_save_registers[i]))
+        if  (bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, backend->callee_save_registers[i]) &&
+             !IS_VFP_REGNUM(backend->callee_save_registers[i]))
         {
             counter++;
         }
@@ -810,63 +822,52 @@ void update_frame_layoutArm32 (control_flow_graph func, struct avl_table *virtua
     if  (0 == counter)
     {
         /* 若没有callee_saved_reg，则删除压栈、出栈指令。  */
-        deleteArmInst (push_insn);
-        deleteArmInst (pop_insn);
+        delete_ArmInst (push_insn);
+        delete_ArmInst (pop_insn);
     }
     else
     {
-        for (i = 0, counter = 0; i < num_callee_save_registers; ++i)
+        for (i = 0, counter = 0; i < backend->num_callee_save_registers; ++i)
         {
-            if  (bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, callee_save_registers[i]) &&
-                 !IS_VFP_REGNUM(callee_save_registers[i]))
+            if  (bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, backend->callee_save_registers[i]) &&
+                 !IS_VFP_REGNUM(backend->callee_save_registers[i]))
             {
-                operand.vreg = gen_vregArm32 (virtual_regs, callee_save_registers[i], GENERAL_REGS);
-                ArmInstSetOperand (push_insn, counter, operand);
-                ArmInstSetOperand (pop_insn, counter, operand);
+                operand.vreg = gen_vregArm32 (virtual_regs, backend->callee_save_registers[i], GENERAL_REGS);
+                ArmInst_set_operand (push_insn, counter, &operand);
+                ArmInst_set_operand (pop_insn, counter, &operand);
                 counter++;
             }
         }
     }
 
-    for (i = 0, counter = 0; i < num_callee_save_registers; ++i)
+    for (i = 0, counter = 0; i < backend->num_callee_save_registers; ++i)
     {
-        if  (bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, callee_save_registers[i]) &&
-             IS_VFP_REGNUM(callee_save_registers[i]))
+        if  (bitmap_bit_p (((struct BfunctionArm32 *)func->param)->callee_saved_reg, backend->callee_save_registers[i]) &&
+             IS_VFP_REGNUM(backend->callee_save_registers[i]))
         {
             counter++;
-            first = min (first, callee_save_registers[i]);
-            last = max (last, callee_save_registers[i]);
+            first = min (first, backend->callee_save_registers[i]);
+            last = max (last, backend->callee_save_registers[i]);
         }
     }
     if  (0 == counter)
     {
         /* 若没有callee_saved_reg，则删除压栈、出栈指令。  */
-        deleteArmInst (vpush_insn);
-        deleteArmInst (vpop_insn);
+        delete_ArmInst (vpush_insn);
+        delete_ArmInst (vpop_insn);
     }
     else
     {
         for (i = first; i <= last; ++i)
         {
             operand.vreg = gen_vregArm32 (virtual_regs, i, VFP_REGS);
-            ArmInstSetOperand (vpush_insn, i - first, operand);
-            ArmInstSetOperand (vpop_insn, i - first, operand);
+            ArmInst_set_operand (vpush_insn, i - first, &operand);
+            ArmInst_set_operand (vpop_insn, i - first, &operand);
             counter++;
         }
     }
 
     BITMAP_XFREE (temp);
-}
-
-BOOL isCopyArm32 (ArmInst instr, int *Def, int *Src)
-{
-    int retval = instr->opcode == ARMINST_OP_MOV_reg;
-    if  (retval)
-    {
-        *Def = ArmInstGetOperand(instr, 0)->vreg->vregno;
-        *Src = ArmInstGetOperand(instr, 1)->vreg->vregno;
-    }
-    return retval;
 }
 
 /* Output a marker (i.e. a label) for the point in the generated code where
@@ -887,29 +888,29 @@ dwarfout_begin_function (IRInst inst, PINTERNAL_DATA pmydata)
 
     commit (inst->bb, p, 1, pmydata);
 
-  /* Expand the fde table if necessary.  */
-  if (pmydata->ddata->fde_table_in_use == pmydata->ddata->fde_table_allocated)
+    /* Expand the fde table if necessary.  */
+    if (pmydata->ddata->fde_table_in_use == pmydata->ddata->fde_table_allocated)
     {
-      pmydata->ddata->fde_table_allocated += 256;
-      old_ptr = pmydata->ddata->fde_table;
-      pmydata->ddata->fde_table = (dw_fde_ref) List_NewLast (pmydata->ddata->mem,
-               pmydata->ddata->fde_table_allocated * sizeof (dw_fde_node));
-      memcpy (pmydata->ddata->fde_table, old_ptr, pmydata->ddata->fde_table_in_use * sizeof (dw_fde_node));
-      List_Delete(old_ptr);
+        pmydata->ddata->fde_table_allocated += 256;
+        old_ptr = pmydata->ddata->fde_table;
+        pmydata->ddata->fde_table = (dw_fde_ref) List_NewLast (pmydata->ddata->mem,
+                 pmydata->ddata->fde_table_allocated * sizeof (dw_fde_node));
+        memcpy (pmydata->ddata->fde_table, old_ptr, pmydata->ddata->fde_table_in_use * sizeof (dw_fde_node));
+        List_Delete(old_ptr);
     }
 
-  /* Record the FDE associated with this function.  */
-  pmydata->ddata->current_funcdef_fde = pmydata->ddata->fde_table_in_use;
+    /* Record the FDE associated with this function.  */
+    pmydata->ddata->current_funcdef_fde = pmydata->ddata->fde_table_in_use;
 
-  /* Add the new FDE at the end of the fde_table.  */
-  fde = &pmydata->ddata->fde_table[pmydata->ddata->fde_table_in_use++];
-  fde->dw_fde_begin = (char *) List_NewLast(pmydata->ddata->mem, (unsigned int) strlen(stGetSymName(IRInstGetOperand(inst, 0)->var)) + 1);
-  strcpy(fde->dw_fde_begin,stGetSymName(IRInstGetOperand(inst, 0)->var));
-  fde->dw_fde_end_prolog = (char *) List_NewLast(pmydata->ddata->mem, (unsigned int) strlen(label) + 1);
-  strcpy(fde->dw_fde_end_prolog,label);
-  fde->dw_fde_begin_epilogue = NULL;
-  fde->dw_fde_end = NULL;
-  fde->dw_fde_cfi = NULL;
+    /* Add the new FDE at the end of the fde_table.  */
+    fde = &pmydata->ddata->fde_table[pmydata->ddata->fde_table_in_use++];
+    fde->dw_fde_begin = (char *) List_NewLast(pmydata->ddata->mem, (unsigned int) strlen(stGetSymName(IRInstGetOperand(inst, 0)->var)) + 1);
+    strcpy(fde->dw_fde_begin,stGetSymName(IRInstGetOperand(inst, 0)->var));
+    fde->dw_fde_end_prolog = (char *) List_NewLast(pmydata->ddata->mem, (unsigned int) strlen(label) + 1);
+    strcpy(fde->dw_fde_end_prolog,label);
+    fde->dw_fde_begin_epilogue = NULL;
+    fde->dw_fde_end = NULL;
+    fde->dw_fde_cfi = NULL;
 }
 
 /* Output a marker (i.e. a label) for the point in the generated code where
@@ -955,23 +956,23 @@ dwarfout_line (IRInst inst, PINTERNAL_DATA pmydata)
 
     commit (inst->bb, p, 1, pmydata);
 
-      /* expand the line info table if necessary */
-      if (pmydata->ddata->line_info_table_in_use == pmydata->ddata->line_info_table_allocated)
-        {
-          pmydata->ddata->line_info_table_allocated += 1024;
-          old_ptr = pmydata->ddata->line_info_table;
-          pmydata->ddata->line_info_table
+    /* expand the line info table if necessary */
+    if (pmydata->ddata->line_info_table_in_use == pmydata->ddata->line_info_table_allocated)
+    {
+        pmydata->ddata->line_info_table_allocated += 1024;
+        old_ptr = pmydata->ddata->line_info_table;
+        pmydata->ddata->line_info_table
             = (dw_line_info_ref)
             List_NewLast (pmydata->ddata->mem,
                    pmydata->ddata->line_info_table_allocated * sizeof (dw_line_info_entry));
-          memcpy (pmydata->ddata->line_info_table, old_ptr, pmydata->ddata->line_info_table_in_use * sizeof (dw_line_info_entry));
-          List_Delete(old_ptr);
-        }
-      /* add the new entry at the end of the line_info_table.  */
-      line_info = &pmydata->ddata->line_info_table[pmydata->ddata->line_info_table_in_use++];
-      line_info->dw_file_num = 1;
-      line_info->dw_line_num = inst->line;
-      line_info->column_num = inst->column;
+        memcpy (pmydata->ddata->line_info_table, old_ptr, pmydata->ddata->line_info_table_in_use * sizeof (dw_line_info_entry));
+        List_Delete(old_ptr);
+    }
+    /* add the new entry at the end of the line_info_table.  */
+    line_info = &pmydata->ddata->line_info_table[pmydata->ddata->line_info_table_in_use++];
+    line_info->dw_file_num = 1;
+    line_info->dw_line_num = inst->line;
+    line_info->column_num = inst->column;
 }
 
 static NODEPTR_TYPE
@@ -992,7 +993,7 @@ setreg (varpool_node vnode, NODEPTR_TYPE p, PINTERNAL_DATA pmydata)
 }
 
 static NODEPTR_TYPE
-load_immediate (basic_block block, vreg_tArm32 dest_reg, int num, enum var_types type, PINTERNAL_DATA pmydata)
+load_immediate (basic_block block, vreg_t dest_reg, int num, enum var_types type, PINTERNAL_DATA pmydata)
 {
     NODEPTR_TYPE p;
     struct ConstantPoolCache* cp;
@@ -1057,7 +1058,7 @@ load_immediate (basic_block block, vreg_tArm32 dest_reg, int num, enum var_types
 
 static NODEPTR_TYPE load_label (varpool_node vnode, basic_block block, PINTERNAL_DATA pmydata)
 {
-    vreg_tArm32 vreg;
+    vreg_t vreg;
     NODEPTR_TYPE p;
     NODEPTR_TYPE label;
 
@@ -1081,14 +1082,14 @@ static NODEPTR_TYPE load_label (varpool_node vnode, basic_block block, PINTERNAL
         /* 设置地址描述符、寄存器描述符。  */
         p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
         p->operand.vreg = vreg;
-        register_descriptorArm32 (p->operand.vreg, NULL, vnode, NULL, TRUE);
+        regdescArm32 (p->operand.vreg, NULL, vnode, NULL, TRUE);
         location_descriptorArm32 (vnode, NULL, p->operand.vreg, FALSE, TRUE);
     }
 
     return p;
 }
 
-static NODEPTR_TYPE load_base(basic_block block, vreg_tArm32 dest_reg, enum var_types tdTypeKind, NODEPTR_TYPE base_reg_no, int disp, PINTERNAL_DATA pmydata)
+static NODEPTR_TYPE load_base(basic_block block, vreg_t dest_reg, enum var_types tdTypeKind, NODEPTR_TYPE base_reg_no, int disp, PINTERNAL_DATA pmydata)
 {
     NODEPTR_TYPE conv;
     NODEPTR_TYPE ind;
@@ -1148,13 +1149,13 @@ static NODEPTR_TYPE
 GetTreeNode (varpool_node vnode, PINTERNAL_DATA pmydata)
 {
     NODEPTR_TYPE p;
-    vreg_tArm32 vreg;
+    vreg_t vreg;
 
     p = getreg (vnode, pmydata->reg_map);
     if  (!p)
     {
         vreg = gen_vregArm32 (pmydata->virtual_regs, -1, vnode->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (vreg, NULL, vnode, NULL, FALSE);
+        regdescArm32 (vreg, NULL, vnode, NULL, FALSE);
         location_descriptorArm32 (vnode, NULL, vreg, FALSE, FALSE);
         p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
         p->operand.vreg = vreg;
@@ -1166,9 +1167,9 @@ GetTreeNode (varpool_node vnode, PINTERNAL_DATA pmydata)
 
 /* 获取数组首地址+偏移量。  */
 static NODEPTR_TYPE
-getAddress (vreg_tArm32 dest_reg, varpool_node base, varpool_node addend, basic_block block, PINTERNAL_DATA pmydata)
+getAddress (vreg_t dest_reg, varpool_node base, varpool_node addend, basic_block block, PINTERNAL_DATA pmydata)
 {
-    vreg_tArm32 vreg;
+    vreg_t vreg;
     NODEPTR_TYPE p;
     NODEPTR_TYPE conv;
     NODEPTR_TYPE tmp;
@@ -1222,7 +1223,7 @@ getAddress (vreg_tArm32 dest_reg, varpool_node base, varpool_node addend, basic_
             commit (block, p, burmArm32_reg_NT, pmydata);
             p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
             p->operand.vreg = vreg;
-            register_descriptorArm32 (p->operand.vreg, NULL, base, NULL, TRUE);
+            regdescArm32 (p->operand.vreg, NULL, base, NULL, TRUE);
             location_descriptorArm32 (base, NULL, p->operand.vreg, FALSE, TRUE);
         }
     }
@@ -1253,7 +1254,7 @@ getAddress (vreg_tArm32 dest_reg, varpool_node base, varpool_node addend, basic_
 }
 
 static NODEPTR_TYPE
-handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_tArm32 vreg, PINTERNAL_DATA pmydata)
+handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_t vreg, PINTERNAL_DATA pmydata)
 {
     NODEPTR_TYPE old_node;
     BOOL delay = TRUE;
@@ -1267,12 +1268,12 @@ handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_tArm32 vreg, PI
         vnode = varpool_get_node (set, IRInstGetOperand (inst, i));
         if  (IRInstIsOutput (inst, i) &&
              /* 不止一处使用。  */
-             (bitmap_count_bits (vnode->use_chain) > 1 ||
+             (bitmap_count_bits (vnode->_uses) > 1 ||
              /* 多次定值。  */
              bitmap_count_bits (vnode->_defines) > 1 ||
              /* 在另一个基本块使用。  */
-             (!bitmap_empty_p (vnode->use_chain) &&
-             InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->use_chain))->bb != inst->bb)))
+             (!bitmap_empty_p (vnode->_uses) &&
+             InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->_uses))->bb != inst->bb)))
         {
             delay = FALSE;
             break;
@@ -1298,7 +1299,7 @@ handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_tArm32 vreg, PI
         }
 
         /* 使用未定值的变量。  */
-        if  (bitmap_count_bits (vnode->use_chain) &&
+        if  (bitmap_count_bits (vnode->_uses) &&
              bitmap_empty_p (vnode->_defines) &&
              vnode->var->sdSymKind == SYM_VAR &&
              ! vnode->var->sdVar.sdvConst &&
@@ -1313,7 +1314,6 @@ handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_tArm32 vreg, PI
              bitmap_count_bits (vnode->_defines) == 1 &&
              ! bitmap_bit_p (inst->bb->dom[0], InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->_defines))->bb->index))
             warning (comp->cmpConfig.input_file_name, inst->line, "%s may be used uninitialized in this function", stGetSymName (vnode->var));
-/*          fatal ("%s may be used uninitialized in this function", stGetSymName (vnode->var));*/
     }
 
     if  (delay)
@@ -1349,7 +1349,7 @@ static BOOL translate_nop (IRInst inst, PINTERNAL_DATA pmydata)
 }
 static BOOL translate_load (IRInst inst, PINTERNAL_DATA pmydata) 
 {
-    vreg_tArm32 src_reg, dest_reg;
+    vreg_t src_reg, dest_reg;
     varpool_node src, dest;
     NODEPTR_TYPE p = NULL;
 
@@ -1362,7 +1362,7 @@ static BOOL translate_load (IRInst inst, PINTERNAL_DATA pmydata)
     if  (! dest_reg)
     {
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
 
@@ -1412,7 +1412,7 @@ static BOOL translate_aload (IRInst inst, PINTERNAL_DATA pmydata)
 {
     varpool_node base;
     varpool_node offset;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
     varpool_node dest;
     NODEPTR_TYPE addr;
     NODEPTR_TYPE p;
@@ -1428,7 +1428,7 @@ static BOOL translate_aload (IRInst inst, PINTERNAL_DATA pmydata)
     if  (! dest_reg)
     {
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
 
@@ -1477,7 +1477,7 @@ static BOOL translate_aload (IRInst inst, PINTERNAL_DATA pmydata)
 }
 static BOOL translate_store (IRInst inst, PINTERNAL_DATA pmydata) 
 {
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
     varpool_node src, dest;
     NODEPTR_TYPE p, ind;
 
@@ -1490,7 +1490,7 @@ static BOOL translate_store (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
     src = varpool_get_node (pmydata->set, IRInstGetOperand (inst, 1));
@@ -1586,7 +1586,7 @@ static BOOL translate_astore (IRInst inst, PINTERNAL_DATA pmydata)
     }
 
     /* 设置操作数的寄存器、地址描述符。  */
-    register_descriptorArm32 (p->operand.vreg, NULL, base, offset, FALSE);
+    regdescArm32 (p->operand.vreg, NULL, base, offset, FALSE);
     location_descriptorArm32 (base, NULL, NULL, TRUE, FALSE);
     location_descriptorArm32 (base, offset, p->operand.vreg, FALSE, FALSE);
     commit (inst->bb, tmp, 1, pmydata);
@@ -1597,7 +1597,7 @@ static BOOL translate_move (IRInst inst, PINTERNAL_DATA pmydata)
 {
     varpool_node src, dest;
     NODEPTR_TYPE p;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
 
     dest = varpool_get_node (pmydata->set, IRInstGetOperand (inst, 0));
     src = varpool_get_node (pmydata->set, IRInstGetOperand (inst, 1));
@@ -1612,7 +1612,7 @@ static BOOL translate_move (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
     p->operand.vreg = dest_reg;
@@ -1626,7 +1626,7 @@ static BOOL translate_addop (IRInst inst, int op, PINTERNAL_DATA pmydata)
 {
     NODEPTR_TYPE left, right, p;
     varpool_node arg1, arg2, dest, temp;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
 
     dest = varpool_get_node (pmydata->set, IRInstGetOperand(inst, 0));
     arg1 = varpool_get_node (pmydata->set, IRInstGetOperand(inst, 1));
@@ -1673,7 +1673,7 @@ static BOOL translate_addop (IRInst inst, int op, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
     p->operand.vreg = dest_reg;
@@ -1691,7 +1691,7 @@ static BOOL translate_addptr (IRInst inst, PINTERNAL_DATA pmydata)
 {
     varpool_node arg1, arg2, dest;
     NODEPTR_TYPE p;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
 
     arg1 = varpool_get_node (pmydata->set, IRInstGetOperand (inst, 1));
     arg2 = varpool_get_node (pmydata->set, IRInstGetOperand (inst, 2));
@@ -1701,7 +1701,7 @@ static BOOL translate_addptr (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
 
@@ -1728,7 +1728,7 @@ static BOOL translate_rem (IRInst inst, PINTERNAL_DATA pmydata)
 {
     NODEPTR_TYPE left, right, p;
     varpool_node dest, arg1, arg2;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
 
     dest = varpool_get_node (pmydata->set, IRInstGetOperand(inst, 0));
     arg1 = varpool_get_node (pmydata->set, IRInstGetOperand(inst, 1));
@@ -1759,7 +1759,7 @@ static BOOL translate_rem (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
     p->operand.vreg = dest_reg;
@@ -1788,7 +1788,7 @@ static BOOL translate_neg (IRInst inst, PINTERNAL_DATA pmydata)
 {
     NODEPTR_TYPE left, right, p;
     varpool_node dest, arg1;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
 
     dest = varpool_get_node (pmydata->set, IRInstGetOperand (inst, 0));
     dest_reg = get_registerArm32 (dest, NULL, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS, FALSE);
@@ -1796,7 +1796,7 @@ static BOOL translate_neg (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
 
@@ -1832,7 +1832,7 @@ static BOOL translate_i2f (IRInst inst, PINTERNAL_DATA pmydata)
     NODEPTR_TYPE left;
     varpool_node dest, arg1;
     NODEPTR_TYPE p;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
 
     dest = varpool_get_node (pmydata->set, IRInstGetOperand (inst, 0));
     dest_reg = get_registerArm32 (dest, NULL, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS, FALSE);
@@ -1840,7 +1840,7 @@ static BOOL translate_i2f (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
 
@@ -1868,7 +1868,7 @@ static BOOL translate_f2i (IRInst inst, PINTERNAL_DATA pmydata)
     NODEPTR_TYPE left;
     varpool_node dest, arg1;
     NODEPTR_TYPE p;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
 
     dest = varpool_get_node (pmydata->set, IRInstGetOperand (inst, 0));
     dest_reg = get_registerArm32 (dest, NULL, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS, FALSE);
@@ -1876,7 +1876,7 @@ static BOOL translate_f2i (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
 
@@ -2080,7 +2080,7 @@ static BOOL translate_relop (IRInst inst, PINTERNAL_DATA pmydata)
     NODEPTR_TYPE conv;
     BOOL swaped = FALSE;
     varpool_node dest;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
 
     dest = varpool_get_node (pmydata->set, IRInstGetOperand(inst, 0));
     dest_reg = get_registerArm32 (dest, NULL, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS, FALSE);
@@ -2088,7 +2088,7 @@ static BOOL translate_relop (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
 
@@ -2180,7 +2180,7 @@ static BOOL translate_not (IRInst inst, PINTERNAL_DATA pmydata)
     BOOL dummy;
     IRInst tmp_insn;
     NODEPTR_TYPE p;
-    vreg_tArm32 dest_reg;
+    vreg_t dest_reg;
 
     dest = varpool_get_node (pmydata->set, IRInstGetOperand(inst, 0));
     dest_reg = get_registerArm32 (dest, NULL, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS, FALSE);
@@ -2188,7 +2188,7 @@ static BOOL translate_not (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         dest_reg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (dest_reg, NULL, dest, NULL, FALSE);
+        regdescArm32 (dest_reg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, dest_reg, FALSE, FALSE);
     }
 
@@ -2308,7 +2308,7 @@ load_global_address (basic_block block, PINTERNAL_DATA pmydata)
             p = getAddress (NULL, vnode, NULL, block, pmydata);
             if  (found)
             {
-                register_descriptorArm32 (p->operand.vreg, NULL, iter, NULL, TRUE);
+                regdescArm32 (p->operand.vreg, NULL, iter, NULL, TRUE);
                 location_descriptorArm32 (iter, NULL, p->operand.vreg, FALSE, TRUE);
             }
             else
@@ -2331,7 +2331,7 @@ static BOOL translate_call (IRInst inst, PINTERNAL_DATA pmydata)
     NODEPTR_TYPE tmp;
     varpool_node param;
     varpool_node dest;
-    vreg_tArm32 vreg;
+    vreg_t vreg;
 
     if  (pmydata->ddata)
         dwarfout_line (inst, pmydata);
@@ -2342,7 +2342,7 @@ static BOOL translate_call (IRInst inst, PINTERNAL_DATA pmydata)
     {
         /* 如果目标操作数不在寄存器，为它新建一个。  */
         vreg = gen_vregArm32 (pmydata->virtual_regs, -1, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        register_descriptorArm32 (vreg, NULL, dest, NULL, FALSE);
+        regdescArm32 (vreg, NULL, dest, NULL, FALSE);
         location_descriptorArm32 (dest, NULL, vreg, FALSE, FALSE);
     }
 
@@ -2500,7 +2500,7 @@ static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata)
     NODEPTR_TYPE p;
     NODEPTR_TYPE tmp;
     varpool_node param;
-    vreg_tArm32 vreg;
+    vreg_t vreg;
 
     if  (pmydata->ddata)
         dwarfout_line (inst, pmydata);
@@ -2612,7 +2612,7 @@ static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata)
             p->operand.vreg = vreg;
             setreg (param, p, pmydata);
 
-            register_descriptorArm32 (p->operand.vreg, NULL, param, NULL, param->var->sdType->tdTypeKind > TYP_lastIntrins);
+            regdescArm32 (p->operand.vreg, NULL, param, NULL, param->var->sdType->tdTypeKind > TYP_lastIntrins);
             location_descriptorArm32 (param, NULL, NULL, TRUE, param->var->sdType->tdTypeKind > TYP_lastIntrins);
             location_descriptorArm32 (param, NULL, p->operand.vreg, FALSE, param->var->sdType->tdTypeKind > TYP_lastIntrins);
         }
@@ -2762,13 +2762,13 @@ find_if_block (basic_block test_bb)
     if  (List_Card (test_bb->succs) != 2)
         return FALSE;
 
-    for(  instr=(ArmInst) List_Last(((BblockArm32)test_bb->param)->code)
+    for(  instr=(ArmInst) List_Last(((struct BblockArm32 *)test_bb->param)->code)
        ;  instr!=NULL
        ;  instr = (ArmInst) List_Prev((void *)instr)
        )
     {
-        if  (instr->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (instr, 0)->ds), "\t@ Jump to the target."))
+        if  (instr->lir.opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInst_get_operand (instr, 0)->ds), "\t@ Jump to the target."))
             return FALSE;
         if  (instr->condition != ConditionAL)
             break;
@@ -2777,7 +2777,7 @@ find_if_block (basic_block test_bb)
     then_bb = InterCodeGetInstByID (test_bb->cfg->code, GetConstVal (IRInstGetOperand (*(IRInst *)List_Last (test_bb->insns), 2)->var, 0)->cvValue.cvIval)->bb;
     else_bb = InterCodeGetInstByID (test_bb->cfg->code, GetConstVal (IRInstGetOperand (*(IRInst *)List_Last (test_bb->insns), 3)->var, 0)->cvValue.cvIval)->bb;
 
-    if  (GetConstVal (IRInstGetOperand (*(IRInst *)List_Last (test_bb->insns), 2)->var, 0)->cvValue.cvIval != ArmInstGetOperand(instr, 0)->cval.cvValue.cvIval)
+    if  (GetConstVal (IRInstGetOperand (*(IRInst *)List_Last (test_bb->insns), 2)->var, 0)->cvValue.cvIval != ArmInst_get_operand(instr, 0)->cval.cvValue.cvIval)
         bswap = TRUE;
 
     /* IF-THEN组合的THEN块必须只有一个前驱。  */
@@ -2802,13 +2802,13 @@ find_if_block (basic_block test_bb)
         return FALSE;	
 
     /* 查找是否已经用了条件指令。  */
-    for(  instr=(ArmInst) List_First(((BblockArm32)then_bb->param)->code)
+    for(  instr=(ArmInst) List_First(((struct BblockArm32 *)then_bb->param)->code)
        ;  instr!=NULL
        ;  instr = (ArmInst) List_Next((void *)instr)
        )
     {
-        if  (instr->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (instr, 0)->ds), "\t@ Jump to the target."))
+        if  (instr->lir.opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInst_get_operand (instr, 0)->ds), "\t@ Jump to the target."))
             break;
         if  (instr->condition != ConditionAL ||
              ArmInst_is_call (instr))
@@ -2816,13 +2816,13 @@ find_if_block (basic_block test_bb)
     }
     if  (else_bb)
     {
-        for(  instr=(ArmInst) List_First(((BblockArm32)else_bb->param)->code)
+        for(  instr=(ArmInst) List_First(((struct BblockArm32 *)else_bb->param)->code)
            ;  instr!=NULL
            ;  instr = (ArmInst) List_Next((void *)instr)
            )
         {
-            if  (instr->opcode == ARMINST_OP_STRING &&
-                 !strcmp (dyn_string_buf (ArmInstGetOperand (instr, 0)->ds), "\t@ Jump to the target."))
+            if  (instr->lir.opcode == ARMINST_OP_STRING &&
+                 !strcmp (dyn_string_buf (ArmInst_get_operand (instr, 0)->ds), "\t@ Jump to the target."))
                 break;
             if  (instr->condition != ConditionAL ||
                  ArmInst_is_call (instr))
@@ -2831,13 +2831,13 @@ find_if_block (basic_block test_bb)
     }
 
     /* 找到要插入的位置。  */
-    for(  jump_insn=(ArmInst) List_Last(((BblockArm32)test_bb->param)->code)
+    for(  jump_insn=(ArmInst) List_Last(((struct BblockArm32 *)test_bb->param)->code)
        ;  jump_insn!=NULL
        ;  jump_insn = (ArmInst) List_Prev((void *)jump_insn)
        )
     {
-        if  (jump_insn->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (jump_insn, 0)->ds), "\t@ Jump to the target."))
+        if  (jump_insn->lir.opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInst_get_operand (jump_insn, 0)->ds), "\t@ Jump to the target."))
             return FALSE;
         if  (jump_insn->condition != ConditionAL)
             break;
@@ -2862,23 +2862,23 @@ find_if_block (basic_block test_bb)
        ;  instr = (ArmInst) List_Prev((void *)instr)
        )
     {
-        if  (instr->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (instr, 0)->ds), "\t@ Jump to the target."))
+        if  (instr->lir.opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInst_get_operand (instr, 0)->ds), "\t@ Jump to the target."))
         {
-            deleteArmInst (instr);
+            delete_ArmInst (instr);
             break;
         }
     }
 
-    for(  instr=(ArmInst) List_First(((BblockArm32)then_bb->param)->code)
+    for(  instr=(ArmInst) List_First(((struct BblockArm32 *)then_bb->param)->code)
        ;  instr!=NULL
-       ;  instr = (ArmInst) List_First(((BblockArm32)then_bb->param)->code)
+       ;  instr = (ArmInst) List_First(((struct BblockArm32 *)then_bb->param)->code)
        )
     {
-        if  (instr->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (instr, 0)->ds), "\t@ Jump to the target."))
+        if  (instr->lir.opcode == ARMINST_OP_STRING &&
+             !strcmp (dyn_string_buf (ArmInst_get_operand (instr, 0)->ds), "\t@ Jump to the target."))
             break;
-        new_insn = (ArmInst) List_NewBefore (((BblockArm32)test_bb->param)->code, jump_insn, sizeof (*new_insn));
+        new_insn = (ArmInst) List_NewBefore (((struct BblockArm32 *)test_bb->param)->code, jump_insn, sizeof (*new_insn));
         memcpy (new_insn, instr, sizeof (*new_insn));
         new_insn->condition = jump_insn->condition;
         List_Delete (instr);
@@ -2897,15 +2897,15 @@ find_if_block (basic_block test_bb)
         default: fatal("internal compiler error");
         }
 
-        for(  instr=(ArmInst) List_First(((BblockArm32)else_bb->param)->code)
+        for(  instr=(ArmInst) List_First(((struct BblockArm32 *)else_bb->param)->code)
            ;  instr!=NULL
-           ;  instr = (ArmInst) List_First(((BblockArm32)else_bb->param)->code)
+           ;  instr = (ArmInst) List_First(((struct BblockArm32 *)else_bb->param)->code)
            )
         {
-            if  (instr->opcode == ARMINST_OP_STRING &&
-                 !strcmp (dyn_string_buf (ArmInstGetOperand (instr, 0)->ds), "\t@ Jump to the target."))
+            if  (instr->lir.opcode == ARMINST_OP_STRING &&
+                 !strcmp (dyn_string_buf (ArmInst_get_operand (instr, 0)->ds), "\t@ Jump to the target."))
                 break;
-            new_insn = (ArmInst) List_NewBefore (((BblockArm32)test_bb->param)->code, jump_insn, sizeof (*new_insn));
+            new_insn = (ArmInst) List_NewBefore (((struct BblockArm32 *)test_bb->param)->code, jump_insn, sizeof (*new_insn));
             memcpy (new_insn, instr, sizeof (*new_insn));
             new_insn->condition = jump_insn->condition;
             List_Delete (instr);
@@ -2916,7 +2916,7 @@ find_if_block (basic_block test_bb)
        ;  instr!=NULL
        ;  instr = (ArmInst) List_Next((void *)jump_insn)
        )
-        deleteArmInst (instr);
+        delete_ArmInst (instr);
     jump_insn->condition = ConditionAL;
 
     for(  ei=(edge *) List_First(then_bb->preds)
@@ -2944,7 +2944,7 @@ find_if_block (basic_block test_bb)
     }
 
     make_edge (test_bb, join_bb);
-    ArmInstGetOperand (jump_insn, 0)->cval.cvValue.cvIval = (*(IRInst *) List_First(join_bb->insns))->uid;
+    ArmInst_get_operand (jump_insn, 0)->cval.cvValue.cvIval = (*(IRInst *) List_First(join_bb->insns))->uid;
 
     return TRUE;   
 }
@@ -2968,7 +2968,7 @@ if_convertArm32 (control_flow_graph func)
     List_Destroy(&blocks);
 }
 
-BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab stab, struct avl_table *virtual_regs, struct dwarf_data *ddata) 
+BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab stab, struct avl_table *virtual_regs, struct Backend* backend, struct dwarf_data *ddata) 
 {
     BOOL bSuccess = FALSE;
     PINTERNAL_DATA pmydata;
@@ -2995,6 +2995,7 @@ BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab st
     pmydata->func = func;
     pmydata->virtual_regs = virtual_regs;
     pmydata->ddata = ddata;
+    pmydata->backend = backend;
 
     compute_dominators (func, FALSE);
 
@@ -3038,7 +3039,7 @@ BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab st
 #if !defined(NDEBUG)
 /*      dumpCover (pti->p, pti->goalnt, 0); */
 #endif
-        burmArm32_select (pti->block, pti->p, pti->goalnt, pmydata->virtual_regs);
+        burmArm32_select (pti->block, pti->p, pti->goalnt, pmydata->virtual_regs, backend);
     }
 
     bSuccess = TRUE;

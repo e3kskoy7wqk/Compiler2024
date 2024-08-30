@@ -269,7 +269,7 @@ propagate_necessity (control_flow_graph cfun, bitmap stmt_necessary, bitmap work
             IRInst *curs;
 
             vnode = varpool_get_node (set, IRInstGetOperand (stmt, 0));
-            for (bmp_iter_set_init (&bi, vnode->use_chain, 0, &bb_index);
+            for (bmp_iter_set_init (&bi, vnode->_uses, 0, &bb_index);
                  bmp_iter_set (&bi, &bb_index);
                  bmp_iter_next (&bi, &bb_index))
             {

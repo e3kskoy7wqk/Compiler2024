@@ -11,6 +11,7 @@
 enum ra_node_type
 {
     INITIAL = 0,
+    PRECOLORED,
     SIMPLIFY,
 # if !defined(SIMPLE)
     FREEZE,
@@ -71,7 +72,6 @@ struct reg_class_desc
     unsigned next_avail, max_num;
     unsigned used_num, max_used;
     bitmap available;
-    char cl_char;
 };
 
 struct Range
@@ -122,85 +122,6 @@ static void delete_interval(struct Interval* interval)
     }
 }
 
-static void
-compute_global_live_sets (LIST blocks)
-{
-    BOOL change_occurred;
-    basic_block* block;
-    ArmInst instr;
-    bitmap work = BITMAP_XMALLOC ();
-    bitmap temp = BITMAP_XMALLOC ();
-
-    for(  block=(basic_block *)List_Last(blocks)
-       ;  block!=NULL
-       ;  block = (basic_block *)List_Prev((void *)block)
-       )
-    {
-        bitmap_clear (((BblockArm32)(*block)->param)->livein);
-        bitmap_clear (((BblockArm32)(*block)->param)->livein);
-    }
-
-    do
-      {
-        change_occurred = FALSE;
-        for(  block=(basic_block *)List_Last(blocks)
-           ;  block!=NULL
-           ;  block = (basic_block *)List_Prev((void *)block)
-           )
-        {
-            edge *ei;
-            /* 后继的livein的并集（如果没有，则为空）。  */
-            BOOL first = TRUE;
-            for(  ei=(edge *)List_First((*block)->succs)
-               ;  ei!=NULL
-               ;  ei = (edge *)List_Next((void *)ei)
-               )
-            {
-                basic_block succ =  ((*ei)->dest);
-                if (first)
-                {
-                    bitmap_copy (work, ((BblockArm32)succ->param)->livein);
-                    first = FALSE;
-                }
-                else
-                    bitmap_ior_into (work, ((BblockArm32)succ->param)->livein);
-            }
-            if (first)
-                bitmap_clear (work);
-  
-            bitmap_copy (((BblockArm32)(*block)->param)->liveout, work);
-
-            /* 在反向指令遍历中删除定义，包括使用。  */
-            for(  instr=(ArmInst)List_Last(((BblockArm32)(*block)->param)->code)
-               ;  instr!=NULL
-               ;  instr = (ArmInst)List_Prev((void *)instr)
-               )
-            {
-                unsigned regno;
-                bitmap_iterator bi;
-                ArmInstOutput (instr, temp);
-                for (bmp_iter_set_init (&bi, temp, 0, &regno);
-                     bmp_iter_set (&bi, &regno);
-                     bmp_iter_next (&bi, &regno))
-                    bitmap_clear_bit (work, regno);
-                ArmInstInput (instr, temp);
-                for (bmp_iter_set_init (&bi, temp, 0, &regno);
-                     bmp_iter_set (&bi, &regno);
-                     bmp_iter_next (&bi, &regno))
-                    bitmap_set_bit (work, regno);
-            }
-
-            /* 记录这是否改变了什么。  */
-            if (bitmap_ior_into (((BblockArm32)(*block)->param)->livein, work))
-                change_occurred = TRUE;
-        }
-      }
-    while (change_occurred);
-
-    BITMAP_XFREE (work);
-    BITMAP_XFREE (temp);
-}
-
 static int compare_pairs( struct pair *arg1, struct pair *arg2 )
 {
     int ret = 0 ;
@@ -214,7 +135,7 @@ static int compare_pairs( struct pair *arg1, struct pair *arg2 )
 }
 
 static int
-compare_insns (ArmInst first, ArmInst second)
+compare_insns (LIR_Op first, LIR_Op second)
 {
     int ret = 0 ;
 
@@ -322,7 +243,7 @@ static int LocateVex(PhaseIFG *G,int u)
     return -1;
 }
 
-static int InsertVex(PhaseIFG *G, int v, int reg_class)
+static int InsertVex(PhaseIFG *G, int v, int reg_class, struct Backend* backend)
 {  /* 初始条件: 有向图G存在,v和有向图G中顶点有相同特征 */
    /* 操作结果: 在有向图G中增添新顶点v(不增添与顶点相关的弧,留待InsertArc()去做) */
     struct pair *p;
@@ -344,7 +265,7 @@ static int InsertVex(PhaseIFG *G, int v, int reg_class)
     (*G).xlist[(*G). vexnum].v = v;
     (*G).xlist[(*G). vexnum].reg_class = reg_class;
     (*G).xlist[(*G). vexnum].interval = create_interval (v);
-    (*G).xlist[(*G). vexnum].hard_num = v < FIRST_VIRTUAL_REGISTER ? v : -1;
+    (*G).xlist[(*G). vexnum].hard_num = backend->is_virtual_register (v) ? -1 : v;
     (*G).xlist[(*G). vexnum].spill_slot = -1;
 
 # if !defined(SIMPLE)
@@ -481,29 +402,91 @@ static void Display(PhaseIFG *G)
     }
 }
 
-static ArmInst
-handle_method_arguments (ArmInst curs)
+void
+compute_global_live_sets (LIST blocks, struct Backend* backend)
 {
-    ArmInst first = NULL;
-    for(  
-       ;  curs!=NULL
-       ;  curs = (ArmInst) List_Prev((void *)curs)
+    BOOL change_occurred;
+    basic_block* block;
+    LIR_Op instr;
+    bitmap work = BITMAP_XMALLOC ();
+    bitmap temp = BITMAP_XMALLOC ();
+
+    for(  block=(basic_block *)List_Last(blocks)
+       ;  block!=NULL
+       ;  block = (basic_block *)List_Prev((void *)block)
        )
     {
-        first = curs;
-        if  (curs->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (curs, 0)->ds), "\t@ Prepare arguments for call."))
-            return curs;
+        bitmap_clear (backend->get_live_in (*block));
+        bitmap_clear (backend->get_live_out (*block));
     }
-    return first;
+
+    do
+      {
+        change_occurred = FALSE;
+        for(  block=(basic_block *)List_Last(blocks)
+           ;  block!=NULL
+           ;  block = (basic_block *)List_Prev((void *)block)
+           )
+        {
+            edge *ei;
+            /* 后继的livein的并集（如果没有，则为空）。  */
+            BOOL first = TRUE;
+            for(  ei=(edge *)List_First((*block)->succs)
+               ;  ei!=NULL
+               ;  ei = (edge *)List_Next((void *)ei)
+               )
+            {
+                basic_block succ =  ((*ei)->dest);
+                if (first)
+                {
+                    bitmap_copy (work, backend->get_live_in (succ));
+                    first = FALSE;
+                }
+                else
+                    bitmap_ior_into (work, backend->get_live_in (succ));
+            }
+            if (first)
+                bitmap_clear (work);
+  
+            bitmap_copy (backend->get_live_out (*block), work);
+
+            /* 在反向指令遍历中删除定义，包括使用。  */
+            for(  instr=(LIR_Op)List_Last(backend->get_code (*block))
+               ;  instr!=NULL
+               ;  instr = (LIR_Op)List_Prev((void *)instr)
+               )
+            {
+                unsigned regno;
+                bitmap_iterator bi;
+                backend->output_regs (instr, temp);
+                for (bmp_iter_set_init (&bi, temp, 0, &regno);
+                     bmp_iter_set (&bi, &regno);
+                     bmp_iter_next (&bi, &regno))
+                    bitmap_clear_bit (work, regno);
+                backend->input_regs (instr, temp);
+                for (bmp_iter_set_init (&bi, temp, 0, &regno);
+                     bmp_iter_set (&bi, &regno);
+                     bmp_iter_next (&bi, &regno))
+                    bitmap_set_bit (work, regno);
+            }
+
+            /* 记录这是否改变了什么。  */
+            if (bitmap_ior_into (backend->get_live_in (*block), work))
+                change_occurred = TRUE;
+        }
+      }
+    while (change_occurred);
+
+    BITMAP_XFREE (work);
+    BITMAP_XFREE (temp);
 }
 
 /* 构建(或重建)带有冲突的完整干涉图。  */
 static void
-build_i_graph (PhaseIFG *G, LIST blocks)
+build_i_graph (PhaseIFG *G, LIST blocks, struct Backend* backend)
 {
     basic_block* block;
-    ArmInst instr;
+    LIR_Op instr;
     bitmap liveout;
     bitmap def;
     bitmap use;
@@ -511,7 +494,7 @@ build_i_graph (PhaseIFG *G, LIST blocks)
     bitmap_head temp_bitmap;
     unsigned i, k;
     int v, w;
-    ArmInst curs;
+    LIR_Op curs;
 
     def = BITMAP_XMALLOC ();
     use = BITMAP_XMALLOC ();
@@ -521,24 +504,24 @@ build_i_graph (PhaseIFG *G, LIST blocks)
        ;  block = (basic_block*) List_Prev((void *)block)
        )
     {
-        bitmap_copy (liveout, ((BblockArm32)(*block)->param)->liveout);
-        for(  instr=(ArmInst) List_Last(((BblockArm32)(*block)->param)->code)
+        bitmap_copy (liveout, backend->get_live_out (*block));
+        for(  instr=(LIR_Op) List_Last(backend->get_code (*block))
            ;  instr!=NULL
-           ;  instr = (ArmInst) List_Prev((void *)instr)
+           ;  instr = (LIR_Op) List_Prev((void *)instr)
            )
         {
-            if  (ArmInst_is_call (instr))
+            if  (backend->is_call (instr))
             {
                 /* 保护调用者保存的寄存器。  */
-                for(  curs=(ArmInst) handle_method_arguments (instr)
+                for(  curs=(LIR_Op) backend->handle_method_arguments (instr)
                    ;  curs!=instr
-                   ;  curs = (ArmInst) List_Next((void *)curs)
+                   ;  curs = (LIR_Op) List_Next((void *)curs)
                    )
                 {
-                    ArmInstOutput (curs, def);
-                    for (i = 0; i < (unsigned) num_caller_save_registers; i++)
+                    backend->output_regs (curs, def);
+                    for (i = 0; i < (unsigned) backend->num_caller_save_registers; i++)
                     {
-                        v = LocateVex (G, caller_save_registers[i]);
+                        v = LocateVex (G, backend->caller_save_registers[i]);
                         for (bmp_iter_set_init (&bi2, liveout, 0, &k);
                              bmp_iter_set (&bi2, &k);
                              bmp_iter_next (&bi2, &k))
@@ -559,12 +542,12 @@ build_i_graph (PhaseIFG *G, LIST blocks)
                 }
             }
 
-            ArmInstOutput (instr, def);
-            ArmInstInput (instr, use);
+            backend->output_regs (instr, def);
+            backend->input_regs (instr, use);
             bitmap_ior_into (liveout, def);
 
 # if !defined(SIMPLE)
-            if  (ArmInst_is_move (instr))
+            if  (backend->is_move (instr))
             {
                 bitmap_and_compl_into (liveout, use);
                 for (bmp_iter_set_init (&bi, def, 0, &i);
@@ -612,11 +595,11 @@ build_i_graph (PhaseIFG *G, LIST blocks)
 }
 
 static void
-number_instructions (LIST blocks, PhaseIFG *g)
+number_instructions (LIST blocks, PhaseIFG *g, struct Backend* backend)
 {
     int op_id = 0;
     basic_block* block;
-    ArmInst op;
+    LIR_Op op;
 
     avl_destroy (g->insn_map, (avl_item_func *) NULL);
     g->insn_map = avl_create ((avl_comparison_func *) compare_insns, NULL, NULL);
@@ -625,9 +608,9 @@ number_instructions (LIST blocks, PhaseIFG *g)
        ;  block = (basic_block *)List_Next((void *)block)
        )
     {
-        for(  op=(ArmInst)List_First(((BblockArm32)(*block)->param)->code)
+        for(  op=(LIR_Op)List_First(backend->get_code (*block))
            ;  op!=NULL
-           ;  op = (ArmInst)List_Next((void *)op)
+           ;  op = (LIR_Op)List_Next((void *)op)
            )
         {
             op->uid = op_id++;
@@ -647,10 +630,10 @@ static int calc_to (struct Interval* cur)
 }
 
 static void
-build_intervals (PhaseIFG *g, LIST blocks)
+build_intervals (PhaseIFG *g, LIST blocks, struct Backend* backend)
 {
     basic_block* block;
-    ArmInst op;
+    LIR_Op op;
     unsigned bit;
     bitmap_iterator bi;
     int u;
@@ -665,9 +648,9 @@ build_intervals (PhaseIFG *g, LIST blocks)
        ;  block = (basic_block *)List_Prev((void *)block)
        )
     {
-        block_to = ((ArmInst)List_First (((BblockArm32)(*block)->param)->code))->uid;
-        block_from = ((ArmInst)List_Last (((BblockArm32)(*block)->param)->code))->uid;
-        for (bmp_iter_set_init (&bi, ((BblockArm32)(*block)->param)->liveout, 0, &bit);
+        block_to = ((LIR_Op)List_First (backend->get_code (*block)))->uid;
+        block_from = ((LIR_Op)List_Last (backend->get_code (*block)))->uid;
+        for (bmp_iter_set_init (&bi, backend->get_live_out (*block), 0, &bit);
              bmp_iter_set (&bi, &bit);
              bmp_iter_next (&bi, &bit))
         {
@@ -675,23 +658,23 @@ build_intervals (PhaseIFG *g, LIST blocks)
             add_use (GetVex(g, u)->interval, block_from, block_to + 1);
         }
 
-        for(  op=(ArmInst)List_Last(((BblockArm32)(*block)->param)->code)
+        for(  op=(LIR_Op)List_Last(backend->get_code (*block))
            ;  op!=NULL
-           ;  op = (ArmInst)List_Prev((void *)op)
+           ;  op = (LIR_Op)List_Prev((void *)op)
            )
         {
             /* 如果指令销毁调用者保存的寄存器，则为每个寄存器添加一个临时范围。  */
-            if (ArmInst_is_call (op))
+            if (backend-> is_call (op))
             {
-                start = handle_method_arguments (op)->uid;
-                for (k = 0; k < num_caller_save_registers; k++)
+                start = backend->handle_method_arguments (op)->uid;
+                for (k = 0; k < backend->num_caller_save_registers; k++)
                 {
-                    u = LocateVex (g, caller_save_registers[k]);
+                    u = LocateVex (g, backend->caller_save_registers[k]);
                     add_use (GetVex(g, u)->interval, start, op->uid + 1);
                 }
             }
 
-            ArmInstOutput (op, temp);
+            backend->output_regs (op, temp);
             for (bmp_iter_set_init (&bi, temp, 0, &bit);
                  bmp_iter_set (&bi, &bit);
                  bmp_iter_next (&bi, &bit))
@@ -699,7 +682,7 @@ build_intervals (PhaseIFG *g, LIST blocks)
                 u = LocateVex (g, bit);
                 add_def (GetVex(g, u)->interval, op->uid);
             }
-            ArmInstInput (op, temp);
+            backend->input_regs (op, temp);
             for (bmp_iter_set_init (&bi, temp, 0, &bit);
                  bmp_iter_set (&bi, &bit);
                  bmp_iter_next (&bi, &bit))
@@ -793,7 +776,7 @@ decrement_degree (PhaseIFG *g, int v, struct reg_class_desc *classes)
 # if !defined(SIMPLE)
         if  (move_related (g, v))
             bitmap_set_bit (g->web_lists[FREEZE], v);
-        else if (GetVex (g, v)->v >= FIRST_VIRTUAL_REGISTER)
+        else if (! bitmap_bit_p (g->web_lists[PRECOLORED], v))
 # endif /* SIMPLE */
         {
             bitmap_set_bit (g->web_lists[SIMPLIFY], v);
@@ -849,7 +832,7 @@ add_worklist (PhaseIFG *G, int v, struct reg_class_desc *classes)
 {
     int cl;
     cl = GetVex (G, v)->reg_class;
-    if  (GetVex (G, v)->v >= FIRST_VIRTUAL_REGISTER &&
+    if  (!bitmap_bit_p (G->web_lists[PRECOLORED], v) &&
          !move_related (G, v) &&
          GetVex (G, v)->num_conflicts < (int) bitmap_count_bits (classes[cl].available))
     {
@@ -876,7 +859,7 @@ ok (PhaseIFG *G, int target,int source,struct reg_class_desc *classes)
     {
         cl = GetVex (G, i)->reg_class;
         if  (GetVex (G, i)->num_conflicts < (int) bitmap_count_bits (classes[cl].available) ||
-             GetVex (G, i)->v < FIRST_VIRTUAL_REGISTER ||
+             bitmap_bit_p (G->web_lists[PRECOLORED], i) ||
              bitmap_bit_p (GetVex (G, i)->firstout, source))
             continue;
         bResult = FALSE;
@@ -962,22 +945,22 @@ combine (PhaseIFG *G, int v,int w,struct reg_class_desc *classes)
 
 /* 尝试合并移动工作列表上的第一个结点。  */
 static void
-coalesce (PhaseIFG *g,struct reg_class_desc *classes)
+coalesce (PhaseIFG *g,struct reg_class_desc *classes, struct Backend* backend)
 {
     int mv_num, sregno, dregno;
-    ArmInst mv;
+    LIR_Op mv;
     int src, dst;
     int temp;
 
     mv_num = bitmap_first_set_bit (g->mv_worklist);
-    mv = (ArmInst) avl_find (g->insn_map, &mv_num);
-    dregno = ArmInstGetOperandAsReg (mv, 0)->vregno;
-    sregno = ArmInstGetOperandAsReg (mv, 1)->vregno;
+    mv = (LIR_Op) avl_find (g->insn_map, &mv_num);
+    dregno = backend->as_register (mv, 0)->vregno;
+    sregno = backend->as_register (mv, 1)->vregno;
 
     dst = alias (g, LocateVex (g, dregno));
     src = alias (g, LocateVex (g, sregno));
 
-    if  (GetVex (g, src)->v < FIRST_VIRTUAL_REGISTER)
+    if  (bitmap_bit_p (g->web_lists[PRECOLORED], src))
     {
         temp = src;
         src = dst;
@@ -991,16 +974,16 @@ coalesce (PhaseIFG *g,struct reg_class_desc *classes)
         bitmap_set_bit (g->mv_coalesced, mv_num);
         add_worklist (g, dst, classes);
     }
-    else if (GetVex (g, src)->v < FIRST_VIRTUAL_REGISTER ||
+    else if (bitmap_bit_p (g->web_lists[PRECOLORED], src) ||
              bitmap_bit_p (GetVex (g, src)->firstout, dst))
     {
         bitmap_set_bit (g->mv_constrained, mv_num);
         add_worklist (g, dst, classes);
         add_worklist (g, src, classes);
     }
-    else if ((GetVex (g, dst)->v < FIRST_VIRTUAL_REGISTER &&
+    else if ((bitmap_bit_p (g->web_lists[PRECOLORED], dst) &&
              ok (g, src, dst, classes)) ||
-             (GetVex (g, dst)->v >= FIRST_VIRTUAL_REGISTER &&
+             (!bitmap_bit_p (g->web_lists[PRECOLORED], dst) &&
              conservative (g, src, dst, classes)))
     {
         bitmap_set_bit (g->mv_coalesced, mv_num);
@@ -1015,13 +998,13 @@ coalesce (PhaseIFG *g,struct reg_class_desc *classes)
 
 /* 冻结与v相关的复制。用于迭代合并。  */
 static void
-freeze_moves (PhaseIFG *G, int v, struct reg_class_desc *classes)
+freeze_moves (PhaseIFG *G, int v, struct reg_class_desc *classes, struct Backend* backend)
 {
     bitmap temp, temp2;
     unsigned mv_num;
     bitmap_iterator bi;
     int sregno, dregno;
-    ArmInst mv;
+    LIR_Op mv;
     int src;
     int w;
     int cl;
@@ -1034,9 +1017,9 @@ freeze_moves (PhaseIFG *G, int v, struct reg_class_desc *classes)
          bmp_iter_set (&bi, &mv_num);
          bmp_iter_next (&bi, &mv_num))
     {
-        mv = (ArmInst) avl_find (G->insn_map, &mv_num);
-        sregno = ArmInstGetOperandAsReg (mv, 1)->vregno;
-        dregno = ArmInstGetOperandAsReg (mv, 0)->vregno;
+        mv = (LIR_Op) avl_find (G->insn_map, &mv_num);
+        sregno = backend->as_register (mv, 1)->vregno;
+        dregno = backend->as_register (mv, 0)->vregno;
 
         src = alias (G, LocateVex (G, sregno));
         if  (alias (G, v) == src)
@@ -1061,20 +1044,20 @@ freeze_moves (PhaseIFG *G, int v, struct reg_class_desc *classes)
 
 /* 冻结冻结工作列表上的第一个结点(仅用于迭代合并)。  */
 static void
-freeze (PhaseIFG *g, struct reg_class_desc *classes)
+freeze (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backend)
 {
     int f;
 
     f = bitmap_first_set_bit (g->web_lists[FREEZE]);
     bitmap_clear_bit (g->web_lists[FREEZE], f);
     bitmap_set_bit (g->web_lists[SIMPLIFY], f);
-    freeze_moves (g, f, classes);
+    freeze_moves (g, f, classes, backend);
 }
 # endif /* SIMPLE */
 
 /* 选择最便宜的可能溢出的结点(我们在需要的时候才会真正溢出)。  */
 static void
-select_spill (PhaseIFG *g, struct reg_class_desc *classes)
+select_spill (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backend)
 {
     unsigned i;
     bitmap_iterator bi;
@@ -1090,22 +1073,14 @@ select_spill (PhaseIFG *g, struct reg_class_desc *classes)
     bitmap_clear_bit (g->web_lists[SPILL], a);
     bitmap_set_bit (g->web_lists[SIMPLIFY], a);
 # if !defined(SIMPLE)
-    freeze_moves (g, a, classes);
+    freeze_moves (g, a, classes, backend);
 # endif /* SIMPLE */
 }
 
-/* 创建一个类型为type的溢出符号。  */
-static int
-assign_spill_slot (control_flow_graph cfun, enum reg_classArm32 type)
-{
-    int ret = cfun->spill_size + cfun->arg_size + cfun->local_size;
-    cfun->spill_size = cfun->spill_size + UNITS_PER_WORD;
-    return ret;
-}
 
 /* 将颜色分配给select栈上的所有节点。并更新合并后的网络的颜色。  */
 static void
-assign_colors (control_flow_graph cfun, PhaseIFG *g, struct reg_class_desc *classes)
+assign_colors (control_flow_graph cfun, PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backend)
 {
     int v;
     bitmap temp_bitmap;
@@ -1139,7 +1114,7 @@ assign_colors (control_flow_graph cfun, PhaseIFG *g, struct reg_class_desc *clas
             if  (GetVex (g, v)->weight == 0x7FFFFFFF)
                 fatal ("attempt to spill already spilled interval!");
             bitmap_set_bit (g->spilledRegs, v);
-            GetVex (g, v)->spill_slot = assign_spill_slot (cfun, cl);
+            GetVex (g, v)->spill_slot = backend->assign_spill_slot (cfun, cl);
         }
         else if (GetVex (g, v)->hard_num == -1)
         {
@@ -1159,25 +1134,25 @@ assign_colors (control_flow_graph cfun, PhaseIFG *g, struct reg_class_desc *clas
 }
 
 static void
-assign_reg_num (PhaseIFG *g, LIST blocks, struct avl_table *virtual_regs)
+assign_reg_num (PhaseIFG *g, LIST blocks, struct avl_table *virtual_regs, struct Backend* backend)
 {
     int i;
     for (i = 0; i < g->vexnum; i++)
     {
-        gen_vregArm32 (virtual_regs, GetVex(g, i)->v, NO_REGS)->hard_num = GetVex (g, i)->hard_num;
+        backend->gen_vreg (virtual_regs, GetVex(g, i)->v, 0)->hard_num = GetVex (g, i)->hard_num;
         if  (GetVex (g, i)->spill_slot != -1)
-            gen_vregArm32 (virtual_regs, GetVex(g, i)->v, NO_REGS)->spill_slot = GetVex (g, i)->spill_slot;
+            backend->gen_vreg (virtual_regs, GetVex(g, i)->v, 0)->spill_slot = GetVex (g, i)->spill_slot;
     }
 }
 
-static void insert_spill_code(PhaseIFG *g, struct avl_table *virtual_regs, LIST blocks)
+static void insert_spill_code(PhaseIFG *g, struct avl_table *virtual_regs, LIST blocks, struct Backend* backend)
 {
     int start;
     int end;
     basic_block* block;
-    ArmInst op, next_op;
+    LIR_Op op, next_op;
     int i;
-    union Arm_Operand operand;
+    union LIR_Opr operand;
     int v;
     int w;
 
@@ -1186,34 +1161,34 @@ static void insert_spill_code(PhaseIFG *g, struct avl_table *virtual_regs, LIST 
        ;  block = (basic_block *)List_Prev((void *)block)
        )
     {
-        for(  op=(ArmInst)List_Last(((BblockArm32)(*block)->param)->code)
+        for(  op=(LIR_Op)List_Last(backend->get_code (*block))
            ;  op!=NULL
            ;  op = next_op
            )
         {
-            next_op  = (ArmInst)List_Prev((void *)op);
-            for (i = 0; i < ArmInstGetNumOperands (op); ++i)
+            next_op  = (LIR_Op)List_Prev((void *)op);
+            for (i = 0; i < backend->operand_count (op); ++i)
             {
-                if  (ArmInstGetOperandAsReg (op, i) &&
-                     bitmap_bit_p (g->spilledRegs, LocateVex (g, ArmInstGetOperandAsReg (op, i)->vregno)))
+                if  (backend->as_register (op, i) &&
+                     bitmap_bit_p (g->spilledRegs, LocateVex (g, backend->as_register (op, i)->vregno)))
                 {
-                    w = LocateVex (g, ArmInstGetOperandAsReg (op, i)->vregno);
+                    w = LocateVex (g, backend->as_register (op, i)->vregno);
 
-                    start = op->uid - !ArmInstIsOutput (op, i);
-                    end = 1 + op->uid - !ArmInstIsOutput (op, i);
+                    start = op->uid - !backend->op_output_p (op, i);
+                    end = 1 + op->uid - !backend->op_output_p (op, i);
 
-                    operand.vreg = gen_vregArm32 (virtual_regs, -1, ArmInstGetOperandAsReg (op, i)->rclass);
-                    register_descriptorArm32 (operand.vreg, gen_vregArm32(virtual_regs, ArmInstGetOperandAsReg (op, i)->vregno, ALL_REGS), NULL, NULL, FALSE);
+                    operand.vreg = backend->gen_vreg (virtual_regs, -1, backend->as_register (op, i)->rclass);
+                    backend->regdesc (operand.vreg, backend->gen_vreg (virtual_regs, backend->as_register (op, i)->vregno, 0), NULL, NULL, FALSE);
     
-                    v = InsertVex (g, operand.vreg->vregno, operand.vreg->rclass);
+                    v = InsertVex (g, operand.vreg->vregno, operand.vreg->rclass, backend);
                     add_use (GetVex (g, v)->interval, start, end);
                     add_def (GetVex (g, v)->interval, start);
-                    ArmInstSetOperand (op, i, operand);
+                    backend->set_op (op, i, &operand);
                     GetVex (g, v)->weight = 0x7FFFFFFF;
-                    if  (ArmInstIsOutput (op, i))
-                        spill_outArm32 (op, operand.vreg, GetVex (g, w)->spill_slot, virtual_regs);
+                    if  (backend->op_output_p (op, i))
+                        backend->spill_out (op, operand.vreg, GetVex (g, w)->spill_slot, virtual_regs);
                     else
-                        spill_inArm32 (op, operand.vreg, GetVex (g, w)->spill_slot, virtual_regs);
+                        backend->spill_in (op, operand.vreg, GetVex (g, w)->spill_slot, virtual_regs);
                 }
             }
         }
@@ -1224,7 +1199,7 @@ static void insert_spill_code(PhaseIFG *g, struct avl_table *virtual_regs, LIST 
 
 /* 构建我们要处理的工作列表。  */
 static void
-build_worklists (PhaseIFG *g, struct avl_table *virtual_regs, struct reg_class_desc *classes)
+build_worklists (PhaseIFG *g, struct avl_table *virtual_regs, struct reg_class_desc *classes, struct Backend* backend)
 {
     unsigned i;
     bitmap_iterator bi;
@@ -1234,7 +1209,7 @@ build_worklists (PhaseIFG *g, struct avl_table *virtual_regs, struct reg_class_d
          bmp_iter_set (&bi, &i);
          bmp_iter_next (&bi, &i))
     {
-        cl =gen_vregArm32 (virtual_regs, GetVex (g, i)->v, ALL_REGS)->rclass;
+        cl =backend->gen_vreg (virtual_regs, GetVex (g, i)->v, 0)->rclass;
         if  (bitmap_count_bits (GetVex (g, i)->firstin) >= bitmap_count_bits (classes[cl].available))
             bitmap_set_bit (g->web_lists[SPILL], i);
 # if !defined(SIMPLE)
@@ -1248,62 +1223,55 @@ build_worklists (PhaseIFG *g, struct avl_table *virtual_regs, struct reg_class_d
 
 /* 寄存器分配的入口点。  */
 void
-ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs)
+ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs, struct Backend* backend)
 {
     PhaseIFG g;
     LIST blocks;
-    struct reg_class_desc classes[LIM_REG_CLASSES];
+    struct reg_class_desc *classes;
     int i;
-    vreg_tArm32 iter;
+    vreg_t iter;
     struct avl_traverser trav;
 
-    memset (classes, 0, sizeof (classes));
-    for (i = 0; i < LIM_REG_CLASSES; i++)
+    classes = (struct reg_class_desc *) xmalloc (sizeof (struct reg_class_desc) * backend->class_count);
+    memset (classes, 0, sizeof (struct reg_class_desc) * backend->class_count);
+    for (i = 0; i < backend->class_count; i++)
     {
         classes[i].available = BITMAP_XMALLOC ();
+        bitmap_copy (classes[i].available, backend->classes[i].available);
+        classes[i].next_avail = backend->classes[i].next_avail;
+        classes[i].max_num = backend->classes[i].max_num;
     }
-
-    classes[GENERAL_REGS].next_avail = 0;
-    classes[GENERAL_REGS].max_num = LAST_ARM_REGNUM + 1;
-    for (i = classes[GENERAL_REGS].next_avail; i < (int) classes[GENERAL_REGS].max_num; i++)
-    {
-        bitmap_set_bit (classes[GENERAL_REGS].available, i);
-    }
-    bitmap_clear_bit (classes[GENERAL_REGS].available, SPILL_REG);
-
-    classes[VFP_REGS].next_avail = FIRST_VFP_REGNUM;
-    classes[VFP_REGS].max_num = LAST_VFP_REGNUM + 1;
-    for (i = classes[VFP_REGS].next_avail; i < (int) classes[VFP_REGS].max_num; i++)
-    {
-        bitmap_set_bit (classes[VFP_REGS].available, i);
-    }
-    bitmap_clear_bit (classes[VFP_REGS].available, SPILL_REG);
 
     CreateDG (&g);
 
-    for(  iter = (vreg_tArm32)avl_t_first (&trav, virtual_regs)
+    for(  iter = (vreg_t)avl_t_first (&trav, virtual_regs)
        ;  iter != NULL
-       ;  iter = (vreg_tArm32)avl_t_next (&trav)
+       ;  iter = (vreg_t)avl_t_next (&trav)
        )
-        InsertVex (&g, iter->vregno, iter->rclass);
+        InsertVex (&g, iter->vregno, iter->rclass, backend);
 
     blocks = List_Create ();
     pre_and_rev_post_order_compute (fn, NULL, blocks, TRUE, FALSE);
 
  repeat:
-    number_instructions (blocks, &g);
+    number_instructions (blocks, &g, backend);
 
-    compute_global_live_sets (blocks);
-    build_intervals (&g, blocks);
+    compute_global_live_sets (blocks, backend);
+    build_intervals (&g, blocks, backend);
 
-    build_i_graph (&g, blocks);
+    build_i_graph (&g, blocks, backend);
 /*  Display (&g);*/
 
+    bitmap_clear (g.web_lists[PRECOLORED]);
     for (i = 0; i < g.vexnum; i++)
+    {
         if  (GetVex (&g, i)->hard_num == -1)
             bitmap_set_bit (g.web_lists[INITIAL], i);
+        else
+            bitmap_set_bit (g.web_lists[PRECOLORED], i);
+    }
 
-    build_worklists (&g, virtual_regs, classes);
+    build_worklists (&g, virtual_regs, classes, backend);
     bitmap_clear (g.web_lists[INITIAL]);
 
     do
@@ -1312,12 +1280,12 @@ ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs)
             simplify (&g, classes);
 # if !defined(SIMPLE)
         else if  (! bitmap_empty_p (g.mv_worklist))
-            coalesce (&g, classes);
+            coalesce (&g, classes, backend);
         else if  (! bitmap_empty_p (g.web_lists[FREEZE]))
-            freeze (&g, classes);
+            freeze (&g, classes, backend);
 # endif /* SIMPLE */
         else if  (! bitmap_empty_p (g.web_lists[SPILL]))
-            select_spill (&g, classes);
+            select_spill (&g, classes, backend);
     }
     while (! bitmap_empty_p (g.web_lists[SIMPLIFY]) ||
 # if !defined(SIMPLE)
@@ -1327,15 +1295,15 @@ ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs)
            ! bitmap_empty_p (g.web_lists[SPILL]));
 
 /*  Display (&g); */
-    assign_colors (fn, &g, classes);
+    assign_colors (fn, &g, classes, backend);
 
     if  (!bitmap_empty_p (g.spilledRegs))
     {
-        insert_spill_code (&g, virtual_regs, blocks);
+        insert_spill_code (&g, virtual_regs, blocks, backend);
         for (i = 0; i < g.vexnum; i++)
         {
             DeleteVex (&g, i);
-            GetVex (&g, i)->hard_num = GetVex (&g, i)->v < FIRST_VIRTUAL_REGISTER ? GetVex (&g, i)->v : -1;
+            GetVex (&g, i)->hard_num = backend->is_virtual_register (GetVex (&g, i)->v) ? -1 : GetVex (&g, i)->v;
             GetVex (&g, i)->spill_slot = -1;
             GetVex (&g, i)->num_conflicts = 0;
 # if !defined(SIMPLE)
@@ -1355,13 +1323,14 @@ ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs)
         goto repeat;
     }
 
-    assign_reg_num (&g, blocks, virtual_regs);
+    assign_reg_num (&g, blocks, virtual_regs, backend);
 
     DestroyGraph (&g);
     List_Destroy (&blocks);
-    for (i = 0; i < LIM_REG_CLASSES; i++)
+    for (i = 0; i < backend->class_count; i++)
     {
         BITMAP_XFREE (classes[i].available);
     }
+    free (classes);
 }
 

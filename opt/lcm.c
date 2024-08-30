@@ -769,7 +769,7 @@ compute_local_properties (control_flow_graph cfun, struct avl_table *block_map, 
                 if  (IRInstIsOutput (*instr, i))
                 {
                     vnode = varpool_get_node (set, IRInstGetOperand (*instr, i));
-                    for (bmp_iter_set_init (&bi, vnode->use_chain, 0, &insn_index);
+                    for (bmp_iter_set_init (&bi, vnode->_uses, 0, &insn_index);
                          bmp_iter_set (&bi, &insn_index);
                          bmp_iter_next (&bi, &insn_index))
                     {
@@ -817,7 +817,7 @@ compute_local_properties (control_flow_graph cfun, struct avl_table *block_map, 
                 if  (IRInstIsOutput (*instr, i))
                 {
                     vnode = varpool_get_node (set, IRInstGetOperand (*instr, i));
-                    for (bmp_iter_and_compl_init (&bi, vnode->use_chain, temp_bitmap, 0,
+                    for (bmp_iter_and_compl_init (&bi, vnode->_uses, temp_bitmap, 0,
                                                   &insn_index);
                          bmp_iter_and_compl (&bi, &insn_index);
                          bmp_iter_next (&bi, &insn_index))
@@ -867,7 +867,7 @@ compute_local_properties (control_flow_graph cfun, struct avl_table *block_map, 
                 if  (IRInstIsOutput(*instr, i))
                 {
                     vnode = varpool_get_node (set, IRInstGetOperand (*instr, i));
-                    for (bmp_iter_and_compl_init (&bi, vnode->use_chain, temp_bitmap, 0,
+                    for (bmp_iter_and_compl_init (&bi, vnode->_uses, temp_bitmap, 0,
                                                   &insn_index);
                          bmp_iter_and_compl (&bi, &insn_index);
                          bmp_iter_next (&bi, &insn_index))

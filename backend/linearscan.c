@@ -67,21 +67,11 @@ struct reg_class_desc
 {
     unsigned next_avail, max_num;
     unsigned used_num, max_used;
-    bitmap used;
-    char cl_char;
+    bitmap used, available;
 };
 
-/* 创建一个类型为type的溢出符号。  */
 static int
-assign_spill_slot (control_flow_graph cfun, enum reg_classArm32 type)
-{
-    int ret = cfun->spill_size + cfun->arg_size + cfun->local_size;
-    cfun->spill_size = cfun->spill_size + UNITS_PER_WORD;
-    return ret;
-}
-
-static int
-compare_insns (ArmInst first, ArmInst second)
+compare_insns (LIR_Op first, LIR_Op second)
 {
     int ret = 0 ;
 
@@ -297,19 +287,20 @@ try_alloc_reg (struct op_reg* ind2reg, struct reg_class_desc *classes, struct op
     int cl = reg->reg_class;
     struct Range temp;
     int ret = -1;
+    unsigned int i;
     if (classes[cl].used_num < classes[cl].max_num - classes[cl].next_avail)
     {
-        unsigned int i;
         for (i = classes[cl].next_avail; i < classes[cl].max_num; i++)
         {
             temp._next = NULL;
             temp._from = reg->lr_begin;
             temp._to = reg->lr_end;
-            if (! bitmap_bit_p (classes[cl].used, i) && ! intersects (ind2reg[i].interval->_first, &temp))
+            if (! bitmap_bit_p (classes[cl].used, i) &&
+                ! intersects (ind2reg[i].interval->_first, &temp))
                 break;
         }
         if (i == classes[cl].max_num)
-          return -1;
+            return -1;
         classes[cl].used_num++;
         ret = i;
         bitmap_set_bit(classes[cl].used, i);
@@ -323,10 +314,10 @@ try_alloc_reg (struct op_reg* ind2reg, struct reg_class_desc *classes, struct op
    将释放的资源归还给CLASSES。  */
 static void
 expire_old_intervals (struct op_reg *reg, struct op_reg** *active,
-                      struct reg_class_desc *classes)
+                      struct reg_class_desc *classes, int class_count)
 {
     int i;
-    for (i = 0; i < LIM_REG_CLASSES; i++)
+    for (i = 0; i < class_count; i++)
         while (classes[i].used_num)
         {
             struct op_reg *a = active[i][classes[i].used_num-1];
@@ -362,14 +353,14 @@ static void bubble_sort(struct op_reg* a[],int n)
 static struct op_reg *
 spill_at_interval (struct op_reg *reg, struct op_reg** *active,
                    struct reg_class_desc *classes, control_flow_graph fn,
-                   struct avl_table *virtual_regs)
+                   struct avl_table *virtual_regs, struct Backend* backend)
 {
     int cl = reg->reg_class;
     struct op_reg *cand;
     unsigned int i;
-    struct base_offset *constVal;
+    struct descriptor_s *constVal;
 
-    constVal = get_locationArm32 (gen_vregArm32 (virtual_regs, reg->order, ALL_REGS));
+    constVal = backend->get_location (backend->gen_vreg (virtual_regs, reg->order, 0));
     if  (constVal != NULL &&
          ! constVal->is_addr &&
          constVal->base->var->sdSymKind == SYM_VAR &&
@@ -387,7 +378,7 @@ spill_at_interval (struct op_reg *reg, struct op_reg** *active,
          classes[cl].used_num > i && cand->lr_end > reg->lr_end;
          ++i, cand = active[cl][i])
     {
-        constVal = get_locationArm32 (gen_vregArm32 (virtual_regs, cand->order, ALL_REGS));
+        constVal = backend->get_location (backend->gen_vreg (virtual_regs, cand->order, 0));
         if  (constVal != NULL &&
              ! constVal->is_addr &&
              constVal->base->var->sdSymKind == SYM_VAR &&
@@ -427,36 +418,38 @@ success:
 
 exit:
     cand->reg_class = 0;
-    cand->spill_slot = assign_spill_slot (fn, reg->reg_class);
+    cand->spill_slot = backend->assign_spill_slot (fn, reg->reg_class);
     
     return cand;
 }
 
-static BOOL linearScan(struct op_reg* ind2reg, int count, control_flow_graph fn, struct avl_table *virtual_regs, struct reg_class_desc *classes, LIST spilledRegs)
+static BOOL linearScan(struct op_reg* ind2reg, int count, control_flow_graph fn, struct avl_table *virtual_regs, struct reg_class_desc *classes, LIST spilledRegs, struct Backend* backend)
 {
     int i;
-    struct op_reg* *active[LIM_REG_CLASSES] = {NULL};
+    struct op_reg** *active;
 
-    for (i = 0; i < LIM_REG_CLASSES; i++)
+    active = (struct op_reg** *) xmalloc (sizeof (struct op_reg**) * backend->class_count);
+
+    for (i = 0; i < backend->class_count; i++)
     {
         bitmap_clear (classes[i].used);
         classes[i].used_num = 0;
     }
 
     for (i = 0; i < count; i++)
-        ind2reg[i].reg_class = gen_vregArm32(virtual_regs, ind2reg[i].order, NO_REGS)->rclass;
+        ind2reg[i].reg_class = backend->gen_vreg (virtual_regs, ind2reg[i].order, 0)->rclass;
 
     /* 按起始点递增的方式对所有间隔排序。  */
-    qsort( (void *)(ind2reg + FIRST_VIRTUAL_REGISTER), count - FIRST_VIRTUAL_REGISTER, sizeof( struct op_reg ), cmp_begin );
-    for (i = 0; i < LIM_REG_CLASSES; i++)
-        active[i] = (struct op_reg **) xmalloc (sizeof (struct op_reg*) * FIRST_VIRTUAL_REGISTER);
+    qsort( (void *)(ind2reg + backend->num_physical_regs), count - backend->num_physical_regs, sizeof( struct op_reg ), cmp_begin );
+    for (i = 0; i < backend->class_count; i++)
+        active[i] = (struct op_reg **) xmalloc (sizeof (struct op_reg*) * backend->num_physical_regs);
 
     /* 接下来是线性扫描分配。  */
-    for (i = FIRST_VIRTUAL_REGISTER; i < count; i++)
+    for (i = backend->num_physical_regs; i < count; i++)
     {
         int cl;
         struct op_reg *reg = ind2reg + i;
-        expire_old_intervals (reg, active, classes);
+        expire_old_intervals (reg, active, classes, backend->class_count);
         cl = reg->reg_class;
         if (try_alloc_reg (ind2reg, classes, reg) >= 0)
         {
@@ -465,8 +458,7 @@ static BOOL linearScan(struct op_reg* ind2reg, int count, control_flow_graph fn,
         }
         else
         {
-            *(struct op_reg* *)List_NewLast(spilledRegs, sizeof (struct op_reg*)) = spill_at_interval (reg, active, classes, fn, virtual_regs);
-            ((BfunctionArm32)fn->param)->NumSpills = ((BfunctionArm32)fn->param)->NumSpills + 1;
+            *(struct op_reg* *)List_NewLast(spilledRegs, sizeof (struct op_reg*)) = spill_at_interval (reg, active, classes, fn, virtual_regs, backend);
         }
 
         /* 一些有趣的转储。  */
@@ -533,49 +525,50 @@ static BOOL linearScan(struct op_reg* ind2reg, int count, control_flow_graph fn,
         }
     )
 
-    for (i = 0; i < LIM_REG_CLASSES; i++)
+    for (i = 0; i < backend->class_count; i++)
         free (active[i]);
+    free (active);
 
     return !List_IsEmpty (spilledRegs);
 }
 
-static void addIntervalsForSpills(struct op_reg *spilled_, struct avl_table *virtual_regs, LIST new_regs)
+static void addIntervalsForSpills(struct op_reg *spilled_, struct avl_table *virtual_regs, LIST new_regs, struct Backend* backend)
 {
-    ArmInst *insn, *next_insn;
+    LIR_Op *insn, *next_insn;
     int i;
-    union Arm_Operand operand;
+    union LIR_Opr operand;
     struct op_reg *new_reg;
 
     if  (spilled_->interval->weight == 0x7FFFFFFF)
         fatal ("attempt to spill already spilled interval!");
 
-    for(  insn=(ArmInst *)List_First(spilled_->use_pos)
+    for(  insn=(LIR_Op *)List_First(spilled_->use_pos)
        ;  insn!=NULL
        ;  insn = next_insn
        )
     {
-        next_insn = (ArmInst *)List_Next((void *)insn);
-        for (i = 0; i < ArmInstGetNumOperands(*insn); ++i)
+        next_insn = (LIR_Op *)List_Next((void *)insn);
+        for (i = 0; i < backend->operand_count (*insn); ++i)
         {
-            if  (ArmInstGetOperandAsReg (*insn, i) &&
-                 ArmInstGetOperandAsReg (*insn, i)->vregno == spilled_->order)
+            if  (backend->as_register (*insn, i) &&
+                 backend->as_register (*insn, i)->vregno == spilled_->order)
             {
-                int start = (*insn)->uid - !ArmInstIsOutput (*insn, i);
-                int end = 1 + (*insn)->uid - !ArmInstIsOutput (*insn, i);
+                int start = (*insn)->uid - !backend->op_output_p (*insn, i);
+                int end = 1 + (*insn)->uid - !backend->op_output_p (*insn, i);
 
-                operand.vreg = gen_vregArm32 (virtual_regs, -1, gen_vregArm32 (virtual_regs, spilled_->order, NO_REGS)->rclass);
-                register_descriptorArm32 (operand.vreg, gen_vregArm32(virtual_regs, spilled_->order, ALL_REGS), NULL, NULL, FALSE);
+                operand.vreg = backend->gen_vreg (virtual_regs, -1, backend->gen_vreg (virtual_regs, spilled_->order, 0)->rclass);
+                backend->regdesc (operand.vreg, backend->gen_vreg (virtual_regs, spilled_->order, 0), NULL, NULL, FALSE);
 
                 new_reg = (struct op_reg *) List_NewLast (new_regs, sizeof (struct op_reg));
                 init_reg_data (new_reg, operand.vreg->vregno, operand.vreg->rclass);
                 new_reg->lr_begin = start, new_reg->lr_end = end;
-                ArmInstSetOperand (*insn, i, operand);
+                backend->set_op (*insn, i, &operand);
                 new_reg->interval->weight = 0x7FFFFFFF;
                 new_reg->spill_slot = spilled_->spill_slot;
-                if  (ArmInstIsOutput (*insn, i))
-                    spill_outArm32 (*insn, operand.vreg, spilled_->spill_slot, virtual_regs);
+                if  (backend->op_output_p (*insn, i))
+                    backend->spill_out (*insn, operand.vreg, spilled_->spill_slot, virtual_regs);
                 else
-                    spill_inArm32 (*insn, operand.vreg, spilled_->spill_slot, virtual_regs);
+                    backend->spill_in (*insn, operand.vreg, spilled_->spill_slot, virtual_regs);
             }
         }
     }
@@ -584,26 +577,26 @@ static void addIntervalsForSpills(struct op_reg *spilled_, struct avl_table *vir
 }
 
 static void
-assign_reg_num (struct avl_table *virtual_regs, struct op_reg *ind2reg, int count)
+assign_reg_num (struct avl_table *virtual_regs, struct op_reg *ind2reg, int count, struct Backend* backend)
 {
     int i;
     for (i = 0; i < count; i++)
     {
         if  (ind2reg[i].reg_class)
         {
-            gen_vregArm32(virtual_regs, ind2reg[i].order, NO_REGS)->hard_num = ind2reg[i].hard_num;
+            backend->gen_vreg (virtual_regs, ind2reg[i].order, 0)->hard_num = ind2reg[i].hard_num;
             if  (ind2reg[i].spill_slot != -1)
-                gen_vregArm32(virtual_regs, ind2reg[i].order, NO_REGS)->spill_slot = ind2reg[i].spill_slot;
+                backend->gen_vreg(virtual_regs, ind2reg[i].order, 0)->spill_slot = ind2reg[i].spill_slot;
         }
     }
 }
 
 static void
-compute_global_live_sets (LIST blocks)
+compute_global_live_sets (LIST blocks, struct Backend* backend)
 {
     BOOL change_occurred;
     basic_block* block;
-    ArmInst instr;
+    LIR_Op instr;
     bitmap work = BITMAP_XMALLOC ();
     bitmap temp = BITMAP_XMALLOC ();
 
@@ -626,31 +619,31 @@ compute_global_live_sets (LIST blocks)
                 basic_block succ =  ((*ei)->dest);
                 if (first)
                 {
-                    bitmap_copy (work, ((BblockArm32)succ->param)->livein);
+                    bitmap_copy (work, backend->get_live_in (succ));
                     first = FALSE;
                 }
                 else
-                    bitmap_ior_into (work, ((BblockArm32)succ->param)->livein);
+                    bitmap_ior_into (work, backend->get_live_in (succ));
             }
             if (first)
                 bitmap_clear (work);
   
-            bitmap_copy (((BblockArm32)(*block)->param)->liveout, work);
+            bitmap_copy (backend->get_live_out (*block), work);
 
             /* 在反向指令遍历中删除定义，包括使用。  */
-            for(  instr=(ArmInst)List_Last(((BblockArm32)(*block)->param)->code)
+            for(  instr=(LIR_Op)List_Last(backend->get_code (*block))
                ;  instr!=NULL
-               ;  instr = (ArmInst)List_Prev((void *)instr)
+               ;  instr = (LIR_Op)List_Prev((void *)instr)
                )
             {
                 unsigned regno;
                 bitmap_iterator bi;
-                ArmInstOutput (instr, temp);
+                backend->output_regs (instr, temp);
                 for (bmp_iter_set_init (&bi, temp, 0, &regno);
                      bmp_iter_set (&bi, &regno);
                      bmp_iter_next (&bi, &regno))
                     bitmap_clear_bit (work, regno);
-                ArmInstInput (instr, temp);
+                backend->input_regs (instr, temp);
                 for (bmp_iter_set_init (&bi, temp, 0, &regno);
                      bmp_iter_set (&bi, &regno);
                      bmp_iter_next (&bi, &regno))
@@ -658,7 +651,7 @@ compute_global_live_sets (LIST blocks)
             }
 
             /* 记录这是否改变了什么。  */
-            if (bitmap_ior_into (((BblockArm32)(*block)->param)->livein, work))
+            if (bitmap_ior_into (backend->get_live_in (*block), work))
                 change_occurred = TRUE;
         }
       }
@@ -668,41 +661,23 @@ compute_global_live_sets (LIST blocks)
     BITMAP_XFREE (temp);
 }
 
-/* 找到函数调用的开始标记。  */
-static ArmInst
-handle_method_arguments (ArmInst curs)
-{
-    ArmInst first = NULL;
-    for(  
-       ;  curs!=NULL
-       ;  curs = (ArmInst) List_Prev((void *)curs)
-       )
-    {
-        first = curs;
-        if  (curs->opcode == ARMINST_OP_STRING &&
-             !strcmp (dyn_string_buf (ArmInstGetOperand (curs, 0)->ds), "\t@ Prepare arguments for call."))
-            return curs;
-    }
-    return first;
-}
-
 static void
-linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, struct reg_class_desc *classes)
+linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, struct reg_class_desc *classes, struct Backend* backend)
 {
     /* 计算活跃性。  */
     LIST bbs = List_Create ();
     basic_block *bb;
-    int i;
+    int i, j;
     int insn_order;
     struct avl_traverser trav;
-    vreg_tArm32 iter;
+    vreg_t iter;
     int index;
     struct op_reg* ind2reg = NULL;
     bitmap temp = BITMAP_XMALLOC ();
-    ArmInst last_insn;
+    LIR_Op last_insn;
     int count = (int) avl_count(virtual_regs);
     LIST spilledRegs;
-    ArmInst insn;
+    LIR_Op insn;
 
     /* 我们需要逆后序遍历来进行线性化，以及后序遍历用于活跃性分析，
        这两者是相同的，都是从后向前进行。  */
@@ -717,19 +692,19 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
        ;  bb!=NULL
        ;  bb = (basic_block *)List_Next((void *)bb)
        )
-        for(  insn=(ArmInst)List_First(((BblockArm32)(*bb)->param)->code)
+        for(  insn=(LIR_Op)List_First(backend->get_code (*bb))
            ;  insn!=NULL
-           ;  insn = (ArmInst)List_Next((void *)insn)
+           ;  insn = (LIR_Op)List_Next((void *)insn)
            )
             insn->uid = insn_order++;
 
-    for(  iter = (vreg_tArm32)avl_t_first (&trav, virtual_regs), index = 0
+    for(  iter = (vreg_t)avl_t_first (&trav, virtual_regs), index = 0
        ;  iter != NULL
-       ;  iter = (vreg_tArm32)avl_t_next (&trav), index++
+       ;  iter = (vreg_t)avl_t_next (&trav), index++
        )
     {
         init_reg_data (ind2reg+index, iter->vregno, iter->rclass);
-        if (! is_virtual_registerArm32 (index))
+        if (! backend->is_virtual_register (index))
             ind2reg[index].hard_num = index;
     }
 
@@ -740,13 +715,22 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
     /* 经典的活跃分析，只要有东西发生变化：
          liveout是后继的livein的并集
          livein是liveout减去定义加上使用。  */
-    compute_global_live_sets (bbs);
+    compute_global_live_sets (bbs, backend);
 
     /* 占住SPILL_REG防止被分配。  */
-    ind2reg[SPILL_REG].lr_begin = 0;
-    ind2reg[SPILL_REG].lr_end = insn_order;
-    add_def (ind2reg[SPILL_REG].interval, 0);
-    add_use (ind2reg[SPILL_REG].interval, 0, insn_order);
+    for (i = 0; i < backend->class_count; i++)
+    {
+        for (j = classes[i].next_avail; j < classes[i].max_num; j++)
+        {
+            if  (!bitmap_bit_p(classes[i].available, j))
+            {
+                ind2reg[j].lr_begin = 0;
+                ind2reg[j].lr_end = insn_order;
+                add_def (ind2reg[j].interval, 0);
+                add_use (ind2reg[j].interval, 0, insn_order);
+            }
+        }
+    }
 
     /* 按线性顺序遍历所有指令，记录并合并可能的活动范围起点和终点。  */
     last_insn = NULL;
@@ -770,15 +754,15 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
         else
             after_end_number = insn_order;
 
-        if (List_First (((BblockArm32)(*bb)->param)->code))
-            before_start_number = ((ArmInst)List_First (((BblockArm32)(*bb)->param)->code))->uid;
+        if (List_First (backend->get_code (*bb)))
+            before_start_number = ((LIR_Op)List_First (backend->get_code (*bb)))->uid;
         else
             before_start_number = after_end_number;
         before_start_number--;
 
         /* Everything live-out in this BB has at least an end point
            after us.  */
-        for (bmp_iter_set_init (&bi, ((BblockArm32)(*bb)->param)->liveout, 0, &bit);
+        for (bmp_iter_set_init (&bi, backend->get_live_out (*bb), 0, &bit);
              bmp_iter_set (&bi, &bit);
              bmp_iter_next (&bi, &bit))
         {
@@ -789,24 +773,24 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
             add_use(result->interval, before_start_number, after_end_number);
         }
 
-        for(  insn=(ArmInst)List_Last(((BblockArm32)(*bb)->param)->code)
+        for(  insn=(LIR_Op)List_Last(backend->get_code (*bb))
            ;  insn!=NULL
-           ;  insn = (ArmInst)List_Prev((void *)insn)
+           ;  insn = (LIR_Op)List_Prev((void *)insn)
            )
         {
             /* 如果指令销毁调用者保存的寄存器，则为每个寄存器添加一个临时范围。  */
-            if (ArmInst_is_call (insn))
+            if (backend->is_call (insn))
             {
-                start = handle_method_arguments (insn)->uid;
-                for (k = 0; k < num_caller_save_registers; k++)
+                start = backend->handle_method_arguments (insn)->uid;
+                for (k = 0; k < backend->num_caller_save_registers; k++)
                 {
-                    add_use(ind2reg[caller_save_registers[k]].interval, start, insn->uid + 1);
-                    note_lr_begin (ind2reg + caller_save_registers[k], start);
-                    note_lr_end (ind2reg + caller_save_registers[k], insn->uid + 1);
+                    add_use(ind2reg[backend->caller_save_registers[k]].interval, start, insn->uid + 1);
+                    note_lr_begin (ind2reg + backend->caller_save_registers[k], start);
+                    note_lr_end (ind2reg + backend->caller_save_registers[k], insn->uid + 1);
                 }
             }
 
-            ArmInstOutput (insn, temp);
+            backend->output_regs (insn, temp);
             for (bmp_iter_set_init (&bi, temp, 0, &bit);
                  bmp_iter_set (&bi, &bit);
                  bmp_iter_next (&bi, &bit))
@@ -818,9 +802,9 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
                 note_lr_end (result, insn->uid);
 
                 add_def (result->interval, insn->uid);
-                *(ArmInst *)List_NewLast(result->use_pos, sizeof (ArmInst)) = insn;
+                *(LIR_Op *)List_NewLast(result->use_pos, sizeof (LIR_Op)) = insn;
             }
-            ArmInstInput (insn, temp);
+            backend->input_regs (insn, temp);
             for (bmp_iter_set_init (&bi, temp, 0, &bit);
                  bmp_iter_set (&bi, &bit);
                  bmp_iter_next (&bi, &bit))
@@ -830,13 +814,13 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
                                            sizeof( struct op_reg ), (int (*)(const void*, const void*))compare );
                 note_lr_end (result, insn->uid);
                 add_use(result->interval, before_start_number, insn->uid);
-                *(ArmInst *)List_NewLast(result->use_pos, sizeof (ArmInst)) = insn;
+                *(LIR_Op *)List_NewLast(result->use_pos, sizeof (LIR_Op)) = insn;
             }
         }
 
         /* Everything live-in in this BB has a start point before
            our first insn.  */
-        for (bmp_iter_set_init (&bi, ((BblockArm32)(*bb)->param)->livein, 0, &bit);
+        for (bmp_iter_set_init (&bi, backend->get_live_in (*bb), 0, &bit);
              bmp_iter_set (&bi, &bit);
              bmp_iter_next (&bi, &bit))
         {
@@ -847,8 +831,8 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
             add_def (result->interval, before_start_number);
         }
   
-        if (List_First (((BblockArm32)(*bb)->param)->code))
-          last_insn = (ArmInst)List_First (((BblockArm32)(*bb)->param)->code);
+        if (List_First (backend->get_code (*bb)))
+            last_insn = (LIR_Op)List_First (backend->get_code (*bb));
     }
 
     for (i = 0; i < count; i++)
@@ -866,7 +850,7 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
     List_Destroy (&bbs);
 
     spilledRegs = List_Create ();
-    while (linearScan (ind2reg, count, fn, virtual_regs, classes, spilledRegs)) {
+    while (linearScan (ind2reg, count, fn, virtual_regs, classes, spilledRegs, backend)) {
         /* 我们溢出了一些寄存器，因此我们需要为溢出代码添加间隔并重新启动算法。  */
         struct op_reg* *spilled_;
         LIST new_regs = List_Create ();
@@ -876,7 +860,7 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
            ;  spilled_!=NULL
            ;  spilled_ = (struct op_reg* *)List_Next((void *)spilled_)
            )
-            addIntervalsForSpills (*spilled_, virtual_regs, new_regs);
+            addIntervalsForSpills (*spilled_, virtual_regs, new_regs, backend);
 
         List_Clear (spilledRegs);
 
@@ -894,7 +878,7 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
     }
     List_Destroy (&spilledRegs);
 
-    assign_reg_num (virtual_regs, ind2reg, count);
+    assign_reg_num (virtual_regs, ind2reg, count, backend);
 
     for (i = 0; i < count; i++)
         free_reg_data(ind2reg+i);
@@ -916,32 +900,29 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
 
 /* 寄存器分配的入口点。  */
 void
-LinearScanAllocator (control_flow_graph fn, struct avl_table *virtual_regs)
+LinearScanAllocator (control_flow_graph fn, struct avl_table *virtual_regs, struct Backend* backend)
 {
     int i;
-    struct reg_class_desc classes[LIM_REG_CLASSES];
+    struct reg_class_desc *classes;
 
-    flow_loops_find (fn);
-/*  flow_loops_dump (fn->loops, stdout);*/
-
-    memset (classes, 0, sizeof (classes));
-    classes[GENERAL_REGS].next_avail = 0;
-    classes[GENERAL_REGS].max_num = LAST_ARM_REGNUM + 1;
-    classes[VFP_REGS].next_avail = FIRST_VFP_REGNUM;
-    classes[VFP_REGS].max_num = LAST_VFP_REGNUM + 1;
-
-    for (i = 0; i < LIM_REG_CLASSES; i++)
+    classes = (struct reg_class_desc *) xmalloc (sizeof (struct reg_class_desc) * backend->class_count);
+    memset (classes, 0, sizeof (struct reg_class_desc) * backend->class_count);
+    for (i = 0; i < backend->class_count; i++)
     {
+        classes[i].available = BITMAP_XMALLOC ();
+        bitmap_copy (classes[i].available, backend->classes[i].available);
+        classes[i].next_avail = backend->classes[i].next_avail;
+        classes[i].max_num = backend->classes[i].max_num;
         classes[i].used = BITMAP_XMALLOC ();
     }
 
-    linear_scan_regalloc (fn, virtual_regs, classes);
+    linear_scan_regalloc (fn, virtual_regs, classes, backend);
 
-    for (i = 0; i < LIM_REG_CLASSES; i++)
+    for (i = 0; i < backend->class_count; i++)
     {
         BITMAP_XFREE (classes[i].used);
+        BITMAP_XFREE (classes[i].available);
     }
-
-    flow_loops_free (&fn->loops);
+    free (classes);
 
 }

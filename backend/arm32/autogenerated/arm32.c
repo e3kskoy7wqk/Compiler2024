@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include "all.h"
+#include "CodeGeneratorArm32.h"
 
 extern LIST mempool;
 #define ALLOC(n) List_NewLast(mempool, n)
@@ -45,510 +46,378 @@ static short burmArm32_nts_3[] = { burmArm32_reg_NT, burmArm32_reg_NT, burmArm32
 
 short *burmArm32_nts[] = {
 	0,	/* 0 */
-	0,	/* 1 */
-	0,	/* 2 */
-	0,	/* 3 */
-	burmArm32_nts_0,	/* 4 */
-	burmArm32_nts_1,	/* 5 */
+	burmArm32_nts_0,	/* 1 */
+	burmArm32_nts_1,	/* 2 */
+	burmArm32_nts_2,	/* 3 */
+	burmArm32_nts_1,	/* 4 */
+	burmArm32_nts_0,	/* 5 */
 	burmArm32_nts_2,	/* 6 */
-	burmArm32_nts_1,	/* 7 */
-	burmArm32_nts_0,	/* 8 */
-	0,	/* 9 */
-	burmArm32_nts_2,	/* 10 */
-	burmArm32_nts_3,	/* 11 */
+	burmArm32_nts_3,	/* 7 */
+	burmArm32_nts_2,	/* 8 */
+	burmArm32_nts_2,	/* 9 */
+	burmArm32_nts_1,	/* 10 */
+	burmArm32_nts_2,	/* 11 */
 	burmArm32_nts_2,	/* 12 */
 	burmArm32_nts_2,	/* 13 */
 	burmArm32_nts_1,	/* 14 */
-	burmArm32_nts_2,	/* 15 */
-	0,	/* 16 */
-	0,	/* 17 */
-	burmArm32_nts_2,	/* 18 */
-	burmArm32_nts_2,	/* 19 */
-	burmArm32_nts_1,	/* 20 */
-	burmArm32_nts_3,	/* 21 */
-	burmArm32_nts_3,	/* 22 */
-	burmArm32_nts_2,	/* 23 */
-	burmArm32_nts_1,	/* 24 */
-	0,	/* 25 */
-	0,	/* 26 */
-	0,	/* 27 */
-	0,	/* 28 */
-	0,	/* 29 */
-	0,	/* 30 */
+	burmArm32_nts_3,	/* 15 */
+	burmArm32_nts_3,	/* 16 */
+	burmArm32_nts_2,	/* 17 */
+	burmArm32_nts_1,	/* 18 */
+	burmArm32_nts_0,	/* 19 */
+	burmArm32_nts_0,	/* 20 */
+	burmArm32_nts_2,	/* 21 */
+	burmArm32_nts_1,	/* 22 */
+	burmArm32_nts_1,	/* 23 */
+	burmArm32_nts_0,	/* 24 */
+	burmArm32_nts_1,	/* 25 */
+	burmArm32_nts_1,	/* 26 */
+	burmArm32_nts_0,	/* 27 */
+	burmArm32_nts_0,	/* 28 */
+	burmArm32_nts_1,	/* 29 */
+	burmArm32_nts_0,	/* 30 */
 	burmArm32_nts_0,	/* 31 */
-	0,	/* 32 */
-	0,	/* 33 */
-	burmArm32_nts_0,	/* 34 */
+	burmArm32_nts_0,	/* 32 */
+	burmArm32_nts_1,	/* 33 */
+	burmArm32_nts_2,	/* 34 */
 	burmArm32_nts_2,	/* 35 */
-	burmArm32_nts_1,	/* 36 */
-	0,	/* 37 */
-	0,	/* 38 */
-	0,	/* 39 */
-	0,	/* 40 */
-	0,	/* 41 */
-	0,	/* 42 */
-	0,	/* 43 */
-	0,	/* 44 */
-	0,	/* 45 */
-	0,	/* 46 */
-	0,	/* 47 */
-	0,	/* 48 */
-	0,	/* 49 */
-	0,	/* 50 */
-	0,	/* 51 */
-	burmArm32_nts_1,	/* 52 */
-	0,	/* 53 */
-	burmArm32_nts_0,	/* 54 */
-	burmArm32_nts_1,	/* 55 */
-	burmArm32_nts_1,	/* 56 */
-	burmArm32_nts_0,	/* 57 */
-	burmArm32_nts_0,	/* 58 */
-	burmArm32_nts_1,	/* 59 */
-	burmArm32_nts_0,	/* 60 */
-	burmArm32_nts_0,	/* 61 */
-	burmArm32_nts_0,	/* 62 */
+	burmArm32_nts_2,	/* 36 */
+	burmArm32_nts_2,	/* 37 */
+	burmArm32_nts_1,	/* 38 */
+	burmArm32_nts_1,	/* 39 */
+	burmArm32_nts_1,	/* 40 */
+	burmArm32_nts_2,	/* 41 */
+	burmArm32_nts_1,	/* 42 */
+	burmArm32_nts_0,	/* 43 */
+	burmArm32_nts_1,	/* 44 */
+	burmArm32_nts_1,	/* 45 */
+	burmArm32_nts_2,	/* 46 */
+	burmArm32_nts_2,	/* 47 */
+	burmArm32_nts_0,	/* 48 */
+	burmArm32_nts_0,	/* 49 */
+	burmArm32_nts_1,	/* 50 */
+	burmArm32_nts_1,	/* 51 */
+	burmArm32_nts_2,	/* 52 */
+	burmArm32_nts_3,	/* 53 */
+	burmArm32_nts_2,	/* 54 */
+	burmArm32_nts_2,	/* 55 */
+	burmArm32_nts_2,	/* 56 */
+	burmArm32_nts_2,	/* 57 */
+	burmArm32_nts_2,	/* 58 */
+	burmArm32_nts_2,	/* 59 */
+	burmArm32_nts_2,	/* 60 */
+	burmArm32_nts_2,	/* 61 */
+	burmArm32_nts_2,	/* 62 */
 	burmArm32_nts_1,	/* 63 */
-	burmArm32_nts_2,	/* 64 */
-	burmArm32_nts_2,	/* 65 */
-	burmArm32_nts_2,	/* 66 */
-	burmArm32_nts_2,	/* 67 */
-	burmArm32_nts_1,	/* 68 */
-	burmArm32_nts_1,	/* 69 */
-	burmArm32_nts_1,	/* 70 */
-	burmArm32_nts_2,	/* 71 */
-	burmArm32_nts_1,	/* 72 */
-	burmArm32_nts_0,	/* 73 */
-	burmArm32_nts_1,	/* 74 */
-	burmArm32_nts_1,	/* 75 */
-	burmArm32_nts_2,	/* 76 */
-	burmArm32_nts_2,	/* 77 */
-	burmArm32_nts_0,	/* 78 */
-	burmArm32_nts_0,	/* 79 */
-	burmArm32_nts_1,	/* 80 */
-	burmArm32_nts_1,	/* 81 */
-	burmArm32_nts_2,	/* 82 */
-	burmArm32_nts_3,	/* 83 */
-	burmArm32_nts_2,	/* 84 */
-	burmArm32_nts_2,	/* 85 */
-	burmArm32_nts_2,	/* 86 */
-	burmArm32_nts_2,	/* 87 */
-	burmArm32_nts_2,	/* 88 */
-	burmArm32_nts_2,	/* 89 */
-	burmArm32_nts_2,	/* 90 */
-	burmArm32_nts_2,	/* 91 */
-	burmArm32_nts_2,	/* 92 */
-	burmArm32_nts_1,	/* 93 */
-	burmArm32_nts_1,	/* 94 */
-	burmArm32_nts_1,	/* 95 */
+	burmArm32_nts_1,	/* 64 */
+	burmArm32_nts_1,	/* 65 */
 };
 
 char burmArm32_arity[] = {
 	0,	/* 0 */
 	0,	/* 1=imm12 */
 	0,	/* 2=simm8 */
-	0,	/* 3 */
-	0,	/* 4=CNSTI4 */
-	0,	/* 5 */
-	0,	/* 6 */
-	1,	/* 7=INDIRI4 */
-	0,	/* 8 */
-	2,	/* 9=ADD */
-	2,	/* 10=SDIV */
-	2,	/* 11=MUL */
-	2,	/* 12=SUB */
-	0,	/* 13 */
-	0,	/* 14 */
-	0,	/* 15 */
-	0,	/* 16 */
-	0,	/* 17 */
-	0,	/* 18 */
-	1,	/* 19=JUMPV */
-	0,	/* 20=LABELV */
-	1,	/* 21=LDR */
-	0,	/* 22 */
-	0,	/* 23 */
-	2,	/* 24=STR */
-	0,	/* 25 */
-	0,	/* 26 */
-	0,	/* 27 */
-	0,	/* 28=REGISTER */
-	2,	/* 29=RSB */
-	2,	/* 30=CMP */
-	0,	/* 31=imm16 */
-	0,	/* 32 */
-	0,	/* 33 */
-	0,	/* 34 */
-	0,	/* 35 */
-	0,	/* 36 */
-	0,	/* 37 */
-	1,	/* 38=CLZ */
-	2,	/* 39=LSR */
-	1,	/* 40=MOV */
-	1,	/* 41=BL */
-	0,	/* 42=LABEL */
-	1,	/* 43=BX */
-	0,	/* 44=PUSH */
-	0,	/* 45=POP */
-	0,	/* 46=STRING */
-	1,	/* 47=VMOV */
-	2,	/* 48=VMUL */
-	2,	/* 49=VADD */
-	2,	/* 50=VSUB */
-	2,	/* 51=VDIV */
-	1,	/* 52=vcvt_signedToFloatingPoint */
-	1,	/* 53=vcvt_floatingPointToSigned */
-	1,	/* 54=VNEG */
-	2,	/* 55=VCMP */
-	1,	/* 56=VCMPz */
-	0,	/* 57=VMRS */
-	2,	/* 58=VSTR */
-	1,	/* 59=VLDR */
-	0,	/* 60=imm10 */
-	0,	/* 61=VPUSH */
-	0,	/* 62=VPOP */
-	2,	/* 63=LSL */
-	2,	/* 64=ASR */
-	0,	/* 65=imm5 */
+	0,	/* 3=CNSTI4 */
+	1,	/* 4=INDIRI4 */
+	2,	/* 5=ADD */
+	2,	/* 6=SDIV */
+	2,	/* 7=MUL */
+	2,	/* 8=SUB */
+	1,	/* 9=JUMPV */
+	0,	/* 10=LABELV */
+	1,	/* 11=LDR */
+	2,	/* 12=STR */
+	0,	/* 13=REGISTER */
+	2,	/* 14=RSB */
+	2,	/* 15=CMP */
+	0,	/* 16=imm16 */
+	1,	/* 17=CLZ */
+	2,	/* 18=LSR */
+	1,	/* 19=MOV */
+	1,	/* 20=BL */
+	0,	/* 21=LABEL */
+	1,	/* 22=BX */
+	0,	/* 23=PUSH */
+	0,	/* 24=POP */
+	0,	/* 25=STRING */
+	1,	/* 26=VMOV */
+	2,	/* 27=VMUL */
+	2,	/* 28=VADD */
+	2,	/* 29=VSUB */
+	2,	/* 30=VDIV */
+	1,	/* 31=vcvt_signedToFloatingPoint */
+	1,	/* 32=vcvt_floatingPointToSigned */
+	1,	/* 33=VNEG */
+	2,	/* 34=VCMP */
+	1,	/* 35=VCMPz */
+	0,	/* 36=VMRS */
+	2,	/* 37=VSTR */
+	1,	/* 38=VLDR */
+	0,	/* 39=imm10 */
+	0,	/* 40=VPUSH */
+	0,	/* 41=VPOP */
+	2,	/* 42=LSL */
+	2,	/* 43=ASR */
+	0,	/* 44=imm5 */
 };
 
 char *burmArm32_opname[] = {
 	/* 0 */	0,
 	/* 1 */	"imm12",
 	/* 2 */	"simm8",
-	/* 3 */	0,
-	/* 4 */	"CNSTI4",
-	/* 5 */	0,
-	/* 6 */	0,
-	/* 7 */	"INDIRI4",
-	/* 8 */	0,
-	/* 9 */	"ADD",
-	/* 10 */	"SDIV",
-	/* 11 */	"MUL",
-	/* 12 */	"SUB",
-	/* 13 */	0,
-	/* 14 */	0,
-	/* 15 */	0,
-	/* 16 */	0,
-	/* 17 */	0,
-	/* 18 */	0,
-	/* 19 */	"JUMPV",
-	/* 20 */	"LABELV",
-	/* 21 */	"LDR",
-	/* 22 */	0,
-	/* 23 */	0,
-	/* 24 */	"STR",
-	/* 25 */	0,
-	/* 26 */	0,
-	/* 27 */	0,
-	/* 28 */	"REGISTER",
-	/* 29 */	"RSB",
-	/* 30 */	"CMP",
-	/* 31 */	"imm16",
-	/* 32 */	0,
-	/* 33 */	0,
-	/* 34 */	0,
-	/* 35 */	0,
-	/* 36 */	0,
-	/* 37 */	0,
-	/* 38 */	"CLZ",
-	/* 39 */	"LSR",
-	/* 40 */	"MOV",
-	/* 41 */	"BL",
-	/* 42 */	"LABEL",
-	/* 43 */	"BX",
-	/* 44 */	"PUSH",
-	/* 45 */	"POP",
-	/* 46 */	"STRING",
-	/* 47 */	"VMOV",
-	/* 48 */	"VMUL",
-	/* 49 */	"VADD",
-	/* 50 */	"VSUB",
-	/* 51 */	"VDIV",
-	/* 52 */	"vcvt_signedToFloatingPoint",
-	/* 53 */	"vcvt_floatingPointToSigned",
-	/* 54 */	"VNEG",
-	/* 55 */	"VCMP",
-	/* 56 */	"VCMPz",
-	/* 57 */	"VMRS",
-	/* 58 */	"VSTR",
-	/* 59 */	"VLDR",
-	/* 60 */	"imm10",
-	/* 61 */	"VPUSH",
-	/* 62 */	"VPOP",
-	/* 63 */	"LSL",
-	/* 64 */	"ASR",
-	/* 65 */	"imm5",
+	/* 3 */	"CNSTI4",
+	/* 4 */	"INDIRI4",
+	/* 5 */	"ADD",
+	/* 6 */	"SDIV",
+	/* 7 */	"MUL",
+	/* 8 */	"SUB",
+	/* 9 */	"JUMPV",
+	/* 10 */	"LABELV",
+	/* 11 */	"LDR",
+	/* 12 */	"STR",
+	/* 13 */	"REGISTER",
+	/* 14 */	"RSB",
+	/* 15 */	"CMP",
+	/* 16 */	"imm16",
+	/* 17 */	"CLZ",
+	/* 18 */	"LSR",
+	/* 19 */	"MOV",
+	/* 20 */	"BL",
+	/* 21 */	"LABEL",
+	/* 22 */	"BX",
+	/* 23 */	"PUSH",
+	/* 24 */	"POP",
+	/* 25 */	"STRING",
+	/* 26 */	"VMOV",
+	/* 27 */	"VMUL",
+	/* 28 */	"VADD",
+	/* 29 */	"VSUB",
+	/* 30 */	"VDIV",
+	/* 31 */	"vcvt_signedToFloatingPoint",
+	/* 32 */	"vcvt_floatingPointToSigned",
+	/* 33 */	"VNEG",
+	/* 34 */	"VCMP",
+	/* 35 */	"VCMPz",
+	/* 36 */	"VMRS",
+	/* 37 */	"VSTR",
+	/* 38 */	"VLDR",
+	/* 39 */	"imm10",
+	/* 40 */	"VPUSH",
+	/* 41 */	"VPOP",
+	/* 42 */	"LSL",
+	/* 43 */	"ASR",
+	/* 44 */	"imm5",
 };
 
 short burmArm32_cost[][4] = {
 	{ 0 },	/* 0 */
-	{ 0 },	/* 1 */
-	{ 0 },	/* 2 */
-	{ 0 },	/* 3 */
-	{ 1 },	/* 4 = reg: LDR(CNSTI4) */
-	{ 1 },	/* 5 = reg: LDR(INDIRI4(reg)) */
-	{ 1 },	/* 6 = reg: LDR(INDIRI4(ADD(reg,reg))) */
-	{ 1 },	/* 7 = reg: LDR(INDIRI4(ADD(reg,imm12))) */
-	{ 1 },	/* 8 = reg: LDR(LABELV) */
-	{ 0 },	/* 9 */
-	{ 1 },	/* 10 = stm: STR(reg,INDIRI4(reg)) */
-	{ 1 },	/* 11 = stm: STR(reg,INDIRI4(ADD(reg,reg))) */
-	{ 1 },	/* 12 = stm: STR(reg,INDIRI4(ADD(reg,imm12))) */
-	{ 1 },	/* 13 = reg: ADD(reg,reg) */
-	{ 1 },	/* 14 = reg: ADD(reg,simm8) */
-	{ 1 },	/* 15 = reg: SDIV(reg,reg) */
-	{ 0 },	/* 16 */
-	{ 0 },	/* 17 */
-	{ 1 },	/* 18 = reg: MUL(reg,reg) */
-	{ 1 },	/* 19 = reg: SUB(reg,reg) */
-	{ 1 },	/* 20 = reg: SUB(reg,simm8) */
-	{ 1 },	/* 21 = reg: ADD(MUL(reg,reg),reg) */
-	{ 1 },	/* 22 = reg: SUB(reg,MUL(reg,reg)) */
-	{ 1 },	/* 23 = stm: CMP(reg,reg) */
-	{ 1 },	/* 24 = stm: CMP(reg,simm8) */
-	{ 0 },	/* 25 */
-	{ 0 },	/* 26 */
-	{ 0 },	/* 27 */
-	{ 0 },	/* 28 */
-	{ 0 },	/* 29 */
-	{ 0 },	/* 30 */
-	{ 1 },	/* 31 = stm: JUMPV(CNSTI4) */
-	{ 0 },	/* 32 */
-	{ 0 },	/* 33 */
-	{ 0 },	/* 34 = reg: REGISTER */
-	{ 1 },	/* 35 = reg: RSB(reg,reg) */
-	{ 1 },	/* 36 = reg: RSB(reg,simm8) */
-	{ 0 },	/* 37 */
-	{ 0 },	/* 38 */
-	{ 0 },	/* 39 */
-	{ 0 },	/* 40 */
-	{ 0 },	/* 41 */
-	{ 0 },	/* 42 */
-	{ 0 },	/* 43 */
-	{ 0 },	/* 44 */
-	{ 0 },	/* 45 */
-	{ 0 },	/* 46 */
-	{ 0 },	/* 47 */
-	{ 0 },	/* 48 */
-	{ 0 },	/* 49 */
-	{ 0 },	/* 50 */
-	{ 0 },	/* 51 */
-	{ 1 },	/* 52 = reg: MOV(reg) */
-	{ 0 },	/* 53 */
-	{ 1 },	/* 54 = reg: MOV(imm16) */
-	{ 1 },	/* 55 = reg: CLZ(reg) */
-	{ 1 },	/* 56 = reg: LSR(reg,imm5) */
-	{ 1 },	/* 57 = stm: BL(LABELV) */
-	{ 0 },	/* 58 = stm: LABEL */
-	{ 1 },	/* 59 = stm: BX(reg) */
-	{ 1 },	/* 60 = stm: PUSH */
-	{ 1 },	/* 61 = stm: POP */
-	{ 0 },	/* 62 = stm: STRING */
-	{ 1 },	/* 63 = reg: VMOV(reg) */
-	{ 1 },	/* 64 = reg: VMUL(reg,reg) */
-	{ 1 },	/* 65 = reg: VADD(reg,reg) */
-	{ 1 },	/* 66 = reg: VSUB(reg,reg) */
-	{ 1 },	/* 67 = reg: VDIV(reg,reg) */
-	{ 1 },	/* 68 = reg: vcvt_signedToFloatingPoint(reg) */
-	{ 1 },	/* 69 = reg: vcvt_floatingPointToSigned(reg) */
-	{ 1 },	/* 70 = reg: VNEG(reg) */
-	{ 1 },	/* 71 = stm: VCMP(reg,reg) */
-	{ 1 },	/* 72 = stm: VCMPz(reg) */
-	{ 1 },	/* 73 = stm: VMRS */
-	{ 1 },	/* 74 = reg: VLDR(INDIRI4(reg)) */
-	{ 1 },	/* 75 = reg: VLDR(INDIRI4(ADD(reg,imm10))) */
-	{ 1 },	/* 76 = stm: VSTR(reg,INDIRI4(reg)) */
-	{ 1 },	/* 77 = stm: VSTR(reg,INDIRI4(ADD(reg,imm10))) */
-	{ 1 },	/* 78 = stm: VPUSH */
-	{ 1 },	/* 79 = stm: VPOP */
-	{ 1 },	/* 80 = reg: LSL(reg,imm5) */
-	{ 1 },	/* 81 = reg: ASR(reg,imm5) */
-	{ 1 },	/* 82 = reg: LDR(INDIRI4(ADD(reg,LSL(reg,imm5)))) */
-	{ 1 },	/* 83 = stm: STR(reg,INDIRI4(ADD(reg,LSL(reg,imm5)))) */
-	{ 1 },	/* 84 = reg: ADD(reg,LSL(reg,imm5)) */
-	{ 1 },	/* 85 = reg: ADD(reg,LSR(reg,imm5)) */
-	{ 1 },	/* 86 = reg: ADD(reg,ASR(reg,imm5)) */
-	{ 1 },	/* 87 = reg: SUB(reg,LSL(reg,imm5)) */
-	{ 1 },	/* 88 = reg: SUB(reg,LSR(reg,imm5)) */
-	{ 1 },	/* 89 = reg: SUB(reg,ASR(reg,imm5)) */
-	{ 1 },	/* 90 = stm: CMP(reg,LSL(reg,imm5)) */
-	{ 1 },	/* 91 = stm: CMP(reg,LSR(reg,imm5)) */
-	{ 1 },	/* 92 = stm: CMP(reg,ASR(reg,imm5)) */
-	{ 1 },	/* 93 = reg: MOV(LSL(reg,imm5)) */
-	{ 1 },	/* 94 = reg: MOV(LSR(reg,imm5)) */
-	{ 1 },	/* 95 = reg: MOV(ASR(reg,imm5)) */
+	{ 1 },	/* 1 = reg: LDR(CNSTI4) */
+	{ 1 },	/* 2 = reg: LDR(INDIRI4(reg)) */
+	{ 1 },	/* 3 = reg: LDR(INDIRI4(ADD(reg,reg))) */
+	{ 1 },	/* 4 = reg: LDR(INDIRI4(ADD(reg,imm12))) */
+	{ 1 },	/* 5 = reg: LDR(LABELV) */
+	{ 1 },	/* 6 = stm: STR(reg,INDIRI4(reg)) */
+	{ 1 },	/* 7 = stm: STR(reg,INDIRI4(ADD(reg,reg))) */
+	{ 1 },	/* 8 = stm: STR(reg,INDIRI4(ADD(reg,imm12))) */
+	{ 1 },	/* 9 = reg: ADD(reg,reg) */
+	{ 1 },	/* 10 = reg: ADD(reg,simm8) */
+	{ 1 },	/* 11 = reg: SDIV(reg,reg) */
+	{ 1 },	/* 12 = reg: MUL(reg,reg) */
+	{ 1 },	/* 13 = reg: SUB(reg,reg) */
+	{ 1 },	/* 14 = reg: SUB(reg,simm8) */
+	{ 1 },	/* 15 = reg: ADD(MUL(reg,reg),reg) */
+	{ 1 },	/* 16 = reg: SUB(reg,MUL(reg,reg)) */
+	{ 1 },	/* 17 = stm: CMP(reg,reg) */
+	{ 1 },	/* 18 = stm: CMP(reg,simm8) */
+	{ 1 },	/* 19 = stm: JUMPV(CNSTI4) */
+	{ 0 },	/* 20 = reg: REGISTER */
+	{ 1 },	/* 21 = reg: RSB(reg,reg) */
+	{ 1 },	/* 22 = reg: RSB(reg,simm8) */
+	{ 1 },	/* 23 = reg: MOV(reg) */
+	{ 1 },	/* 24 = reg: MOV(imm16) */
+	{ 1 },	/* 25 = reg: CLZ(reg) */
+	{ 1 },	/* 26 = reg: LSR(reg,imm5) */
+	{ 1 },	/* 27 = stm: BL(LABELV) */
+	{ 0 },	/* 28 = stm: LABEL */
+	{ 1 },	/* 29 = stm: BX(reg) */
+	{ 1 },	/* 30 = stm: PUSH */
+	{ 1 },	/* 31 = stm: POP */
+	{ 0 },	/* 32 = stm: STRING */
+	{ 1 },	/* 33 = reg: VMOV(reg) */
+	{ 1 },	/* 34 = reg: VMUL(reg,reg) */
+	{ 1 },	/* 35 = reg: VADD(reg,reg) */
+	{ 1 },	/* 36 = reg: VSUB(reg,reg) */
+	{ 1 },	/* 37 = reg: VDIV(reg,reg) */
+	{ 1 },	/* 38 = reg: vcvt_signedToFloatingPoint(reg) */
+	{ 1 },	/* 39 = reg: vcvt_floatingPointToSigned(reg) */
+	{ 1 },	/* 40 = reg: VNEG(reg) */
+	{ 1 },	/* 41 = stm: VCMP(reg,reg) */
+	{ 1 },	/* 42 = stm: VCMPz(reg) */
+	{ 1 },	/* 43 = stm: VMRS */
+	{ 1 },	/* 44 = reg: VLDR(INDIRI4(reg)) */
+	{ 1 },	/* 45 = reg: VLDR(INDIRI4(ADD(reg,imm10))) */
+	{ 1 },	/* 46 = stm: VSTR(reg,INDIRI4(reg)) */
+	{ 1 },	/* 47 = stm: VSTR(reg,INDIRI4(ADD(reg,imm10))) */
+	{ 1 },	/* 48 = stm: VPUSH */
+	{ 1 },	/* 49 = stm: VPOP */
+	{ 1 },	/* 50 = reg: LSL(reg,imm5) */
+	{ 1 },	/* 51 = reg: ASR(reg,imm5) */
+	{ 1 },	/* 52 = reg: LDR(INDIRI4(ADD(reg,LSL(reg,imm5)))) */
+	{ 1 },	/* 53 = stm: STR(reg,INDIRI4(ADD(reg,LSL(reg,imm5)))) */
+	{ 1 },	/* 54 = reg: ADD(reg,LSL(reg,imm5)) */
+	{ 1 },	/* 55 = reg: ADD(reg,LSR(reg,imm5)) */
+	{ 1 },	/* 56 = reg: ADD(reg,ASR(reg,imm5)) */
+	{ 1 },	/* 57 = reg: SUB(reg,LSL(reg,imm5)) */
+	{ 1 },	/* 58 = reg: SUB(reg,LSR(reg,imm5)) */
+	{ 1 },	/* 59 = reg: SUB(reg,ASR(reg,imm5)) */
+	{ 1 },	/* 60 = stm: CMP(reg,LSL(reg,imm5)) */
+	{ 1 },	/* 61 = stm: CMP(reg,LSR(reg,imm5)) */
+	{ 1 },	/* 62 = stm: CMP(reg,ASR(reg,imm5)) */
+	{ 1 },	/* 63 = reg: MOV(LSL(reg,imm5)) */
+	{ 1 },	/* 64 = reg: MOV(LSR(reg,imm5)) */
+	{ 1 },	/* 65 = reg: MOV(ASR(reg,imm5)) */
 };
 
 char *burmArm32_string[] = {
 	/* 0 */	0,
-	/* 1 */	0,
-	/* 2 */	0,
-	/* 3 */	0,
-	/* 4 */	"reg: LDR(CNSTI4)",
-	/* 5 */	"reg: LDR(INDIRI4(reg))",
-	/* 6 */	"reg: LDR(INDIRI4(ADD(reg,reg)))",
-	/* 7 */	"reg: LDR(INDIRI4(ADD(reg,imm12)))",
-	/* 8 */	"reg: LDR(LABELV)",
-	/* 9 */	0,
-	/* 10 */	"stm: STR(reg,INDIRI4(reg))",
-	/* 11 */	"stm: STR(reg,INDIRI4(ADD(reg,reg)))",
-	/* 12 */	"stm: STR(reg,INDIRI4(ADD(reg,imm12)))",
-	/* 13 */	"reg: ADD(reg,reg)",
-	/* 14 */	"reg: ADD(reg,simm8)",
-	/* 15 */	"reg: SDIV(reg,reg)",
-	/* 16 */	0,
-	/* 17 */	0,
-	/* 18 */	"reg: MUL(reg,reg)",
-	/* 19 */	"reg: SUB(reg,reg)",
-	/* 20 */	"reg: SUB(reg,simm8)",
-	/* 21 */	"reg: ADD(MUL(reg,reg),reg)",
-	/* 22 */	"reg: SUB(reg,MUL(reg,reg))",
-	/* 23 */	"stm: CMP(reg,reg)",
-	/* 24 */	"stm: CMP(reg,simm8)",
-	/* 25 */	0,
-	/* 26 */	0,
-	/* 27 */	0,
-	/* 28 */	0,
-	/* 29 */	0,
-	/* 30 */	0,
-	/* 31 */	"stm: JUMPV(CNSTI4)",
-	/* 32 */	0,
-	/* 33 */	0,
-	/* 34 */	"reg: REGISTER",
-	/* 35 */	"reg: RSB(reg,reg)",
-	/* 36 */	"reg: RSB(reg,simm8)",
-	/* 37 */	0,
-	/* 38 */	0,
-	/* 39 */	0,
-	/* 40 */	0,
-	/* 41 */	0,
-	/* 42 */	0,
-	/* 43 */	0,
-	/* 44 */	0,
-	/* 45 */	0,
-	/* 46 */	0,
-	/* 47 */	0,
-	/* 48 */	0,
-	/* 49 */	0,
-	/* 50 */	0,
-	/* 51 */	0,
-	/* 52 */	"reg: MOV(reg)",
-	/* 53 */	0,
-	/* 54 */	"reg: MOV(imm16)",
-	/* 55 */	"reg: CLZ(reg)",
-	/* 56 */	"reg: LSR(reg,imm5)",
-	/* 57 */	"stm: BL(LABELV)",
-	/* 58 */	"stm: LABEL",
-	/* 59 */	"stm: BX(reg)",
-	/* 60 */	"stm: PUSH",
-	/* 61 */	"stm: POP",
-	/* 62 */	"stm: STRING",
-	/* 63 */	"reg: VMOV(reg)",
-	/* 64 */	"reg: VMUL(reg,reg)",
-	/* 65 */	"reg: VADD(reg,reg)",
-	/* 66 */	"reg: VSUB(reg,reg)",
-	/* 67 */	"reg: VDIV(reg,reg)",
-	/* 68 */	"reg: vcvt_signedToFloatingPoint(reg)",
-	/* 69 */	"reg: vcvt_floatingPointToSigned(reg)",
-	/* 70 */	"reg: VNEG(reg)",
-	/* 71 */	"stm: VCMP(reg,reg)",
-	/* 72 */	"stm: VCMPz(reg)",
-	/* 73 */	"stm: VMRS",
-	/* 74 */	"reg: VLDR(INDIRI4(reg))",
-	/* 75 */	"reg: VLDR(INDIRI4(ADD(reg,imm10)))",
-	/* 76 */	"stm: VSTR(reg,INDIRI4(reg))",
-	/* 77 */	"stm: VSTR(reg,INDIRI4(ADD(reg,imm10)))",
-	/* 78 */	"stm: VPUSH",
-	/* 79 */	"stm: VPOP",
-	/* 80 */	"reg: LSL(reg,imm5)",
-	/* 81 */	"reg: ASR(reg,imm5)",
-	/* 82 */	"reg: LDR(INDIRI4(ADD(reg,LSL(reg,imm5))))",
-	/* 83 */	"stm: STR(reg,INDIRI4(ADD(reg,LSL(reg,imm5))))",
-	/* 84 */	"reg: ADD(reg,LSL(reg,imm5))",
-	/* 85 */	"reg: ADD(reg,LSR(reg,imm5))",
-	/* 86 */	"reg: ADD(reg,ASR(reg,imm5))",
-	/* 87 */	"reg: SUB(reg,LSL(reg,imm5))",
-	/* 88 */	"reg: SUB(reg,LSR(reg,imm5))",
-	/* 89 */	"reg: SUB(reg,ASR(reg,imm5))",
-	/* 90 */	"stm: CMP(reg,LSL(reg,imm5))",
-	/* 91 */	"stm: CMP(reg,LSR(reg,imm5))",
-	/* 92 */	"stm: CMP(reg,ASR(reg,imm5))",
-	/* 93 */	"reg: MOV(LSL(reg,imm5))",
-	/* 94 */	"reg: MOV(LSR(reg,imm5))",
-	/* 95 */	"reg: MOV(ASR(reg,imm5))",
+	/* 1 */	"reg: LDR(CNSTI4)",
+	/* 2 */	"reg: LDR(INDIRI4(reg))",
+	/* 3 */	"reg: LDR(INDIRI4(ADD(reg,reg)))",
+	/* 4 */	"reg: LDR(INDIRI4(ADD(reg,imm12)))",
+	/* 5 */	"reg: LDR(LABELV)",
+	/* 6 */	"stm: STR(reg,INDIRI4(reg))",
+	/* 7 */	"stm: STR(reg,INDIRI4(ADD(reg,reg)))",
+	/* 8 */	"stm: STR(reg,INDIRI4(ADD(reg,imm12)))",
+	/* 9 */	"reg: ADD(reg,reg)",
+	/* 10 */	"reg: ADD(reg,simm8)",
+	/* 11 */	"reg: SDIV(reg,reg)",
+	/* 12 */	"reg: MUL(reg,reg)",
+	/* 13 */	"reg: SUB(reg,reg)",
+	/* 14 */	"reg: SUB(reg,simm8)",
+	/* 15 */	"reg: ADD(MUL(reg,reg),reg)",
+	/* 16 */	"reg: SUB(reg,MUL(reg,reg))",
+	/* 17 */	"stm: CMP(reg,reg)",
+	/* 18 */	"stm: CMP(reg,simm8)",
+	/* 19 */	"stm: JUMPV(CNSTI4)",
+	/* 20 */	"reg: REGISTER",
+	/* 21 */	"reg: RSB(reg,reg)",
+	/* 22 */	"reg: RSB(reg,simm8)",
+	/* 23 */	"reg: MOV(reg)",
+	/* 24 */	"reg: MOV(imm16)",
+	/* 25 */	"reg: CLZ(reg)",
+	/* 26 */	"reg: LSR(reg,imm5)",
+	/* 27 */	"stm: BL(LABELV)",
+	/* 28 */	"stm: LABEL",
+	/* 29 */	"stm: BX(reg)",
+	/* 30 */	"stm: PUSH",
+	/* 31 */	"stm: POP",
+	/* 32 */	"stm: STRING",
+	/* 33 */	"reg: VMOV(reg)",
+	/* 34 */	"reg: VMUL(reg,reg)",
+	/* 35 */	"reg: VADD(reg,reg)",
+	/* 36 */	"reg: VSUB(reg,reg)",
+	/* 37 */	"reg: VDIV(reg,reg)",
+	/* 38 */	"reg: vcvt_signedToFloatingPoint(reg)",
+	/* 39 */	"reg: vcvt_floatingPointToSigned(reg)",
+	/* 40 */	"reg: VNEG(reg)",
+	/* 41 */	"stm: VCMP(reg,reg)",
+	/* 42 */	"stm: VCMPz(reg)",
+	/* 43 */	"stm: VMRS",
+	/* 44 */	"reg: VLDR(INDIRI4(reg))",
+	/* 45 */	"reg: VLDR(INDIRI4(ADD(reg,imm10)))",
+	/* 46 */	"stm: VSTR(reg,INDIRI4(reg))",
+	/* 47 */	"stm: VSTR(reg,INDIRI4(ADD(reg,imm10)))",
+	/* 48 */	"stm: VPUSH",
+	/* 49 */	"stm: VPOP",
+	/* 50 */	"reg: LSL(reg,imm5)",
+	/* 51 */	"reg: ASR(reg,imm5)",
+	/* 52 */	"reg: LDR(INDIRI4(ADD(reg,LSL(reg,imm5))))",
+	/* 53 */	"stm: STR(reg,INDIRI4(ADD(reg,LSL(reg,imm5))))",
+	/* 54 */	"reg: ADD(reg,LSL(reg,imm5))",
+	/* 55 */	"reg: ADD(reg,LSR(reg,imm5))",
+	/* 56 */	"reg: ADD(reg,ASR(reg,imm5))",
+	/* 57 */	"reg: SUB(reg,LSL(reg,imm5))",
+	/* 58 */	"reg: SUB(reg,LSR(reg,imm5))",
+	/* 59 */	"reg: SUB(reg,ASR(reg,imm5))",
+	/* 60 */	"stm: CMP(reg,LSL(reg,imm5))",
+	/* 61 */	"stm: CMP(reg,LSR(reg,imm5))",
+	/* 62 */	"stm: CMP(reg,ASR(reg,imm5))",
+	/* 63 */	"reg: MOV(LSL(reg,imm5))",
+	/* 64 */	"reg: MOV(LSR(reg,imm5))",
+	/* 65 */	"reg: MOV(ASR(reg,imm5))",
 };
 
 static short burmArm32_decode_stm[] = {
 	0,
-	10,
-	11,
-	12,
-	23,
-	24,
+	6,
+	7,
+	8,
+	17,
+	18,
+	19,
+	27,
+	29,
+	28,
+	30,
 	31,
-	57,
-	59,
-	58,
+	32,
+	41,
+	42,
+	43,
+	46,
+	47,
+	48,
+	49,
+	53,
 	60,
 	61,
 	62,
-	71,
-	72,
-	73,
-	76,
-	77,
-	78,
-	79,
-	83,
-	90,
-	91,
-	92,
 };
 
 static short burmArm32_decode_reg[] = {
 	0,
+	1,
+	2,
+	3,
 	4,
 	5,
-	6,
-	7,
-	8,
+	9,
+	10,
+	11,
+	12,
 	13,
 	14,
 	15,
-	18,
-	19,
+	16,
 	20,
 	21,
 	22,
+	23,
+	24,
+	25,
+	26,
+	33,
 	34,
 	35,
 	36,
+	37,
+	38,
+	39,
+	40,
+	44,
+	45,
+	50,
+	51,
 	52,
 	54,
 	55,
 	56,
+	57,
+	58,
+	59,
 	63,
 	64,
 	65,
-	66,
-	67,
-	68,
-	69,
-	70,
-	74,
-	75,
-	80,
-	81,
-	82,
-	84,
-	85,
-	86,
-	87,
-	88,
-	89,
-	93,
-	94,
-	95,
 };
 
 int burmArm32_rule(STATE_TYPE state, int goalnt) {
@@ -609,9 +478,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 4: /* CNSTI4 */
+	case 3: /* CNSTI4 */
 		{
-			static struct burmArm32_state z = { 4, 0, 0,
+			static struct burmArm32_state z = { 3, 0, 0,
 				{	0,
 					32767,
 					32767,
@@ -622,14 +491,14 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 7: /* INDIRI4 */
+	case 4: /* INDIRI4 */
 		assert(l);
 		break;
-	case 9: /* ADD */
+	case 5: /* ADD */
 		assert(l && r);
 		if (	/* reg: ADD(reg,ASR(reg,imm5)) */
-			r->op == 64 && /* ASR */
-			r->right->op == 65 /* imm5 */
+			r->op == 43 && /* ASR */
+			r->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -638,8 +507,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: ADD(reg,LSR(reg,imm5)) */
-			r->op == 39 && /* LSR */
-			r->right->op == 65 /* imm5 */
+			r->op == 18 && /* LSR */
+			r->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -648,8 +517,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: ADD(reg,LSL(reg,imm5)) */
-			r->op == 63 && /* LSL */
-			r->right->op == 65 /* imm5 */
+			r->op == 42 && /* LSL */
+			r->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -658,7 +527,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: ADD(MUL(reg,reg),reg) */
-			l->op == 11 /* MUL */
+			l->op == 7 /* MUL */
 		) {
 			c = l->left->cost[burmArm32_reg_NT] + l->right->cost[burmArm32_reg_NT] + r->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -683,7 +552,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 10: /* SDIV */
+	case 6: /* SDIV */
 		assert(l && r);
 		{	/* reg: SDIV(reg,reg) */
 			c = l->cost[burmArm32_reg_NT] + r->cost[burmArm32_reg_NT] + 1;
@@ -693,7 +562,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 11: /* MUL */
+	case 7: /* MUL */
 		assert(l && r);
 		{	/* reg: MUL(reg,reg) */
 			c = l->cost[burmArm32_reg_NT] + r->cost[burmArm32_reg_NT] + 1;
@@ -703,11 +572,11 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 12: /* SUB */
+	case 8: /* SUB */
 		assert(l && r);
 		if (	/* reg: SUB(reg,ASR(reg,imm5)) */
-			r->op == 64 && /* ASR */
-			r->right->op == 65 /* imm5 */
+			r->op == 43 && /* ASR */
+			r->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -716,8 +585,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: SUB(reg,LSR(reg,imm5)) */
-			r->op == 39 && /* LSR */
-			r->right->op == 65 /* imm5 */
+			r->op == 18 && /* LSR */
+			r->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -726,8 +595,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: SUB(reg,LSL(reg,imm5)) */
-			r->op == 63 && /* LSL */
-			r->right->op == 65 /* imm5 */
+			r->op == 42 && /* LSL */
+			r->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -736,7 +605,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: SUB(reg,MUL(reg,reg)) */
-			r->op == 11 /* MUL */
+			r->op == 7 /* MUL */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + r->right->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -761,10 +630,10 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 19: /* JUMPV */
+	case 9: /* JUMPV */
 		assert(l);
 		if (	/* stm: JUMPV(CNSTI4) */
-			l->op == 4 /* CNSTI4 */
+			l->op == 3 /* CNSTI4 */
 		) {
 			c = 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -773,9 +642,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 20: /* LABELV */
+	case 10: /* LABELV */
 		{
-			static struct burmArm32_state z = { 20, 0, 0,
+			static struct burmArm32_state z = { 10, 0, 0,
 				{	0,
 					32767,
 					32767,
@@ -786,13 +655,13 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 21: /* LDR */
+	case 11: /* LDR */
 		assert(l);
 		if (	/* reg: LDR(INDIRI4(ADD(reg,LSL(reg,imm5)))) */
-			l->op == 7 && /* INDIRI4 */
-			l->left->op == 9 && /* ADD */
-			l->left->right->op == 63 && /* LSL */
-			l->left->right->right->op == 65 /* imm5 */
+			l->op == 4 && /* INDIRI4 */
+			l->left->op == 5 && /* ADD */
+			l->left->right->op == 42 && /* LSL */
+			l->left->right->right->op == 44 /* imm5 */
 		) {
 			c = l->left->left->cost[burmArm32_reg_NT] + l->left->right->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -801,7 +670,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: LDR(LABELV) */
-			l->op == 20 /* LABELV */
+			l->op == 10 /* LABELV */
 		) {
 			c = 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -810,8 +679,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: LDR(INDIRI4(ADD(reg,imm12))) */
-			l->op == 7 && /* INDIRI4 */
-			l->left->op == 9 && /* ADD */
+			l->op == 4 && /* INDIRI4 */
+			l->left->op == 5 && /* ADD */
 			l->left->right->op == 1 /* imm12 */
 		) {
 			c = l->left->left->cost[burmArm32_reg_NT] + 1;
@@ -821,8 +690,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: LDR(INDIRI4(ADD(reg,reg))) */
-			l->op == 7 && /* INDIRI4 */
-			l->left->op == 9 /* ADD */
+			l->op == 4 && /* INDIRI4 */
+			l->left->op == 5 /* ADD */
 		) {
 			c = l->left->left->cost[burmArm32_reg_NT] + l->left->right->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -831,7 +700,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: LDR(INDIRI4(reg)) */
-			l->op == 7 /* INDIRI4 */
+			l->op == 4 /* INDIRI4 */
 		) {
 			c = l->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -840,7 +709,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: LDR(CNSTI4) */
-			l->op == 4 /* CNSTI4 */
+			l->op == 3 /* CNSTI4 */
 		) {
 			c = 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -849,13 +718,13 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 24: /* STR */
+	case 12: /* STR */
 		assert(l && r);
 		if (	/* stm: STR(reg,INDIRI4(ADD(reg,LSL(reg,imm5)))) */
-			r->op == 7 && /* INDIRI4 */
-			r->left->op == 9 && /* ADD */
-			r->left->right->op == 63 && /* LSL */
-			r->left->right->right->op == 65 /* imm5 */
+			r->op == 4 && /* INDIRI4 */
+			r->left->op == 5 && /* ADD */
+			r->left->right->op == 42 && /* LSL */
+			r->left->right->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->left->cost[burmArm32_reg_NT] + r->left->right->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -864,8 +733,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* stm: STR(reg,INDIRI4(ADD(reg,imm12))) */
-			r->op == 7 && /* INDIRI4 */
-			r->left->op == 9 && /* ADD */
+			r->op == 4 && /* INDIRI4 */
+			r->left->op == 5 && /* ADD */
 			r->left->right->op == 1 /* imm12 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->left->cost[burmArm32_reg_NT] + 1;
@@ -875,8 +744,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* stm: STR(reg,INDIRI4(ADD(reg,reg))) */
-			r->op == 7 && /* INDIRI4 */
-			r->left->op == 9 /* ADD */
+			r->op == 4 && /* INDIRI4 */
+			r->left->op == 5 /* ADD */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->left->cost[burmArm32_reg_NT] + r->left->right->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -885,7 +754,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* stm: STR(reg,INDIRI4(reg)) */
-			r->op == 7 /* INDIRI4 */
+			r->op == 4 /* INDIRI4 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -894,9 +763,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 28: /* REGISTER */
+	case 13: /* REGISTER */
 		{
-			static struct burmArm32_state z = { 28, 0, 0,
+			static struct burmArm32_state z = { 13, 0, 0,
 				{	0,
 					32767,
 					0,	/* reg: REGISTER */
@@ -907,7 +776,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 29: /* RSB */
+	case 14: /* RSB */
 		assert(l && r);
 		if (	/* reg: RSB(reg,simm8) */
 			r->op == 2 /* simm8 */
@@ -926,11 +795,11 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 30: /* CMP */
+	case 15: /* CMP */
 		assert(l && r);
 		if (	/* stm: CMP(reg,ASR(reg,imm5)) */
-			r->op == 64 && /* ASR */
-			r->right->op == 65 /* imm5 */
+			r->op == 43 && /* ASR */
+			r->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -939,8 +808,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* stm: CMP(reg,LSR(reg,imm5)) */
-			r->op == 39 && /* LSR */
-			r->right->op == 65 /* imm5 */
+			r->op == 18 && /* LSR */
+			r->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -949,8 +818,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* stm: CMP(reg,LSL(reg,imm5)) */
-			r->op == 63 && /* LSL */
-			r->right->op == 65 /* imm5 */
+			r->op == 42 && /* LSL */
+			r->right->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -975,9 +844,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 31: /* imm16 */
+	case 16: /* imm16 */
 		{
-			static struct burmArm32_state z = { 31, 0, 0,
+			static struct burmArm32_state z = { 16, 0, 0,
 				{	0,
 					32767,
 					32767,
@@ -988,7 +857,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 38: /* CLZ */
+	case 17: /* CLZ */
 		assert(l);
 		{	/* reg: CLZ(reg) */
 			c = l->cost[burmArm32_reg_NT] + 1;
@@ -998,10 +867,10 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 39: /* LSR */
+	case 18: /* LSR */
 		assert(l && r);
 		if (	/* reg: LSR(reg,imm5) */
-			r->op == 65 /* imm5 */
+			r->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -1010,11 +879,11 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 40: /* MOV */
+	case 19: /* MOV */
 		assert(l);
 		if (	/* reg: MOV(ASR(reg,imm5)) */
-			l->op == 64 && /* ASR */
-			l->right->op == 65 /* imm5 */
+			l->op == 43 && /* ASR */
+			l->right->op == 44 /* imm5 */
 		) {
 			c = l->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -1023,8 +892,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: MOV(LSR(reg,imm5)) */
-			l->op == 39 && /* LSR */
-			l->right->op == 65 /* imm5 */
+			l->op == 18 && /* LSR */
+			l->right->op == 44 /* imm5 */
 		) {
 			c = l->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -1033,8 +902,8 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: MOV(LSL(reg,imm5)) */
-			l->op == 63 && /* LSL */
-			l->right->op == 65 /* imm5 */
+			l->op == 42 && /* LSL */
+			l->right->op == 44 /* imm5 */
 		) {
 			c = l->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -1043,7 +912,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: MOV(imm16) */
-			l->op == 31 /* imm16 */
+			l->op == 16 /* imm16 */
 		) {
 			c = 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -1059,10 +928,10 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 41: /* BL */
+	case 20: /* BL */
 		assert(l);
 		if (	/* stm: BL(LABELV) */
-			l->op == 20 /* LABELV */
+			l->op == 10 /* LABELV */
 		) {
 			c = 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -1071,9 +940,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 42: /* LABEL */
+	case 21: /* LABEL */
 		{
-			static struct burmArm32_state z = { 42, 0, 0,
+			static struct burmArm32_state z = { 21, 0, 0,
 				{	0,
 					0,	/* stm: LABEL */
 					32767,
@@ -1084,7 +953,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 43: /* BX */
+	case 22: /* BX */
 		assert(l);
 		{	/* stm: BX(reg) */
 			c = l->cost[burmArm32_reg_NT] + 1;
@@ -1094,9 +963,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 44: /* PUSH */
+	case 23: /* PUSH */
 		{
-			static struct burmArm32_state z = { 44, 0, 0,
+			static struct burmArm32_state z = { 23, 0, 0,
 				{	0,
 					1,	/* stm: PUSH */
 					32767,
@@ -1107,9 +976,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 45: /* POP */
+	case 24: /* POP */
 		{
-			static struct burmArm32_state z = { 45, 0, 0,
+			static struct burmArm32_state z = { 24, 0, 0,
 				{	0,
 					1,	/* stm: POP */
 					32767,
@@ -1120,9 +989,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 46: /* STRING */
+	case 25: /* STRING */
 		{
-			static struct burmArm32_state z = { 46, 0, 0,
+			static struct burmArm32_state z = { 25, 0, 0,
 				{	0,
 					0,	/* stm: STRING */
 					32767,
@@ -1133,7 +1002,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 47: /* VMOV */
+	case 26: /* VMOV */
 		assert(l);
 		{	/* reg: VMOV(reg) */
 			c = l->cost[burmArm32_reg_NT] + 1;
@@ -1143,7 +1012,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 48: /* VMUL */
+	case 27: /* VMUL */
 		assert(l && r);
 		{	/* reg: VMUL(reg,reg) */
 			c = l->cost[burmArm32_reg_NT] + r->cost[burmArm32_reg_NT] + 1;
@@ -1153,7 +1022,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 49: /* VADD */
+	case 28: /* VADD */
 		assert(l && r);
 		{	/* reg: VADD(reg,reg) */
 			c = l->cost[burmArm32_reg_NT] + r->cost[burmArm32_reg_NT] + 1;
@@ -1163,7 +1032,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 50: /* VSUB */
+	case 29: /* VSUB */
 		assert(l && r);
 		{	/* reg: VSUB(reg,reg) */
 			c = l->cost[burmArm32_reg_NT] + r->cost[burmArm32_reg_NT] + 1;
@@ -1173,7 +1042,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 51: /* VDIV */
+	case 30: /* VDIV */
 		assert(l && r);
 		{	/* reg: VDIV(reg,reg) */
 			c = l->cost[burmArm32_reg_NT] + r->cost[burmArm32_reg_NT] + 1;
@@ -1183,7 +1052,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 52: /* vcvt_signedToFloatingPoint */
+	case 31: /* vcvt_signedToFloatingPoint */
 		assert(l);
 		{	/* reg: vcvt_signedToFloatingPoint(reg) */
 			c = l->cost[burmArm32_reg_NT] + 1;
@@ -1193,7 +1062,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 53: /* vcvt_floatingPointToSigned */
+	case 32: /* vcvt_floatingPointToSigned */
 		assert(l);
 		{	/* reg: vcvt_floatingPointToSigned(reg) */
 			c = l->cost[burmArm32_reg_NT] + 1;
@@ -1203,7 +1072,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 54: /* VNEG */
+	case 33: /* VNEG */
 		assert(l);
 		{	/* reg: VNEG(reg) */
 			c = l->cost[burmArm32_reg_NT] + 1;
@@ -1213,7 +1082,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 55: /* VCMP */
+	case 34: /* VCMP */
 		assert(l && r);
 		{	/* stm: VCMP(reg,reg) */
 			c = l->cost[burmArm32_reg_NT] + r->cost[burmArm32_reg_NT] + 1;
@@ -1223,7 +1092,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 56: /* VCMPz */
+	case 35: /* VCMPz */
 		assert(l);
 		{	/* stm: VCMPz(reg) */
 			c = l->cost[burmArm32_reg_NT] + 1;
@@ -1233,9 +1102,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 57: /* VMRS */
+	case 36: /* VMRS */
 		{
-			static struct burmArm32_state z = { 57, 0, 0,
+			static struct burmArm32_state z = { 36, 0, 0,
 				{	0,
 					1,	/* stm: VMRS */
 					32767,
@@ -1246,12 +1115,12 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 58: /* VSTR */
+	case 37: /* VSTR */
 		assert(l && r);
 		if (	/* stm: VSTR(reg,INDIRI4(ADD(reg,imm10))) */
-			r->op == 7 && /* INDIRI4 */
-			r->left->op == 9 && /* ADD */
-			r->left->right->op == 60 /* imm10 */
+			r->op == 4 && /* INDIRI4 */
+			r->left->op == 5 && /* ADD */
+			r->left->right->op == 39 /* imm10 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -1260,7 +1129,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* stm: VSTR(reg,INDIRI4(reg)) */
-			r->op == 7 /* INDIRI4 */
+			r->op == 4 /* INDIRI4 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + r->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_stm_NT]) {
@@ -1269,12 +1138,12 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 59: /* VLDR */
+	case 38: /* VLDR */
 		assert(l);
 		if (	/* reg: VLDR(INDIRI4(ADD(reg,imm10))) */
-			l->op == 7 && /* INDIRI4 */
-			l->left->op == 9 && /* ADD */
-			l->left->right->op == 60 /* imm10 */
+			l->op == 4 && /* INDIRI4 */
+			l->left->op == 5 && /* ADD */
+			l->left->right->op == 39 /* imm10 */
 		) {
 			c = l->left->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -1283,7 +1152,7 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		if (	/* reg: VLDR(INDIRI4(reg)) */
-			l->op == 7 /* INDIRI4 */
+			l->op == 4 /* INDIRI4 */
 		) {
 			c = l->left->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -1292,9 +1161,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 60: /* imm10 */
+	case 39: /* imm10 */
 		{
-			static struct burmArm32_state z = { 60, 0, 0,
+			static struct burmArm32_state z = { 39, 0, 0,
 				{	0,
 					32767,
 					32767,
@@ -1305,9 +1174,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 61: /* VPUSH */
+	case 40: /* VPUSH */
 		{
-			static struct burmArm32_state z = { 61, 0, 0,
+			static struct burmArm32_state z = { 40, 0, 0,
 				{	0,
 					1,	/* stm: VPUSH */
 					32767,
@@ -1318,9 +1187,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 62: /* VPOP */
+	case 41: /* VPOP */
 		{
-			static struct burmArm32_state z = { 62, 0, 0,
+			static struct burmArm32_state z = { 41, 0, 0,
 				{	0,
 					1,	/* stm: VPOP */
 					32767,
@@ -1331,10 +1200,10 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			};
 			return (STATE_TYPE)&z;
 		}
-	case 63: /* LSL */
+	case 42: /* LSL */
 		assert(l && r);
 		if (	/* reg: LSL(reg,imm5) */
-			r->op == 65 /* imm5 */
+			r->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -1343,10 +1212,10 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 64: /* ASR */
+	case 43: /* ASR */
 		assert(l && r);
 		if (	/* reg: ASR(reg,imm5) */
-			r->op == 65 /* imm5 */
+			r->op == 44 /* imm5 */
 		) {
 			c = l->cost[burmArm32_reg_NT] + 1;
 			if (c + 0 < p->cost[burmArm32_reg_NT]) {
@@ -1355,9 +1224,9 @@ STATE_TYPE burmArm32_state(int op, STATE_TYPE left, STATE_TYPE right) {
 			}
 		}
 		break;
-	case 65: /* imm5 */
+	case 44: /* imm5 */
 		{
-			static struct burmArm32_state z = { 65, 0, 0,
+			static struct burmArm32_state z = { 44, 0, 0,
 				{	0,
 					32767,
 					32767,
@@ -1405,105 +1274,105 @@ NODEPTR_TYPE *burmArm32_kids(NODEPTR_TYPE p, int eruleno, NODEPTR_TYPE kids[]) {
 	burmArm32_assert(p, PANIC("NULL tree in burmArm32_kids\n"));
 	burmArm32_assert(kids, PANIC("NULL kids in burmArm32_kids\n"));
 	switch (eruleno) {
-	case 79: /* stm: VPOP */
-	case 78: /* stm: VPUSH */
-	case 73: /* stm: VMRS */
-	case 62: /* stm: STRING */
-	case 61: /* stm: POP */
-	case 60: /* stm: PUSH */
-	case 58: /* stm: LABEL */
-	case 57: /* stm: BL(LABELV) */
-	case 54: /* reg: MOV(imm16) */
-	case 34: /* reg: REGISTER */
-	case 31: /* stm: JUMPV(CNSTI4) */
-	case 8: /* reg: LDR(LABELV) */
-	case 4: /* reg: LDR(CNSTI4) */
+	case 49: /* stm: VPOP */
+	case 48: /* stm: VPUSH */
+	case 43: /* stm: VMRS */
+	case 32: /* stm: STRING */
+	case 31: /* stm: POP */
+	case 30: /* stm: PUSH */
+	case 28: /* stm: LABEL */
+	case 27: /* stm: BL(LABELV) */
+	case 24: /* reg: MOV(imm16) */
+	case 20: /* reg: REGISTER */
+	case 19: /* stm: JUMPV(CNSTI4) */
+	case 5: /* reg: LDR(LABELV) */
+	case 1: /* reg: LDR(CNSTI4) */
 		break;
-	case 95: /* reg: MOV(ASR(reg,imm5)) */
-	case 94: /* reg: MOV(LSR(reg,imm5)) */
-	case 93: /* reg: MOV(LSL(reg,imm5)) */
-	case 74: /* reg: VLDR(INDIRI4(reg)) */
-	case 5: /* reg: LDR(INDIRI4(reg)) */
+	case 65: /* reg: MOV(ASR(reg,imm5)) */
+	case 64: /* reg: MOV(LSR(reg,imm5)) */
+	case 63: /* reg: MOV(LSL(reg,imm5)) */
+	case 44: /* reg: VLDR(INDIRI4(reg)) */
+	case 2: /* reg: LDR(INDIRI4(reg)) */
 		kids[0] = LEFT_CHILD(LEFT_CHILD(p));
 		break;
-	case 6: /* reg: LDR(INDIRI4(ADD(reg,reg))) */
+	case 3: /* reg: LDR(INDIRI4(ADD(reg,reg))) */
 		kids[0] = LEFT_CHILD(LEFT_CHILD(LEFT_CHILD(p)));
 		kids[1] = RIGHT_CHILD(LEFT_CHILD(LEFT_CHILD(p)));
 		break;
-	case 75: /* reg: VLDR(INDIRI4(ADD(reg,imm10))) */
-	case 7: /* reg: LDR(INDIRI4(ADD(reg,imm12))) */
+	case 45: /* reg: VLDR(INDIRI4(ADD(reg,imm10))) */
+	case 4: /* reg: LDR(INDIRI4(ADD(reg,imm12))) */
 		kids[0] = LEFT_CHILD(LEFT_CHILD(LEFT_CHILD(p)));
 		break;
-	case 92: /* stm: CMP(reg,ASR(reg,imm5)) */
-	case 91: /* stm: CMP(reg,LSR(reg,imm5)) */
-	case 90: /* stm: CMP(reg,LSL(reg,imm5)) */
-	case 89: /* reg: SUB(reg,ASR(reg,imm5)) */
-	case 88: /* reg: SUB(reg,LSR(reg,imm5)) */
-	case 87: /* reg: SUB(reg,LSL(reg,imm5)) */
-	case 86: /* reg: ADD(reg,ASR(reg,imm5)) */
-	case 85: /* reg: ADD(reg,LSR(reg,imm5)) */
-	case 84: /* reg: ADD(reg,LSL(reg,imm5)) */
-	case 76: /* stm: VSTR(reg,INDIRI4(reg)) */
-	case 10: /* stm: STR(reg,INDIRI4(reg)) */
+	case 62: /* stm: CMP(reg,ASR(reg,imm5)) */
+	case 61: /* stm: CMP(reg,LSR(reg,imm5)) */
+	case 60: /* stm: CMP(reg,LSL(reg,imm5)) */
+	case 59: /* reg: SUB(reg,ASR(reg,imm5)) */
+	case 58: /* reg: SUB(reg,LSR(reg,imm5)) */
+	case 57: /* reg: SUB(reg,LSL(reg,imm5)) */
+	case 56: /* reg: ADD(reg,ASR(reg,imm5)) */
+	case 55: /* reg: ADD(reg,LSR(reg,imm5)) */
+	case 54: /* reg: ADD(reg,LSL(reg,imm5)) */
+	case 46: /* stm: VSTR(reg,INDIRI4(reg)) */
+	case 6: /* stm: STR(reg,INDIRI4(reg)) */
 		kids[0] = LEFT_CHILD(p);
 		kids[1] = LEFT_CHILD(RIGHT_CHILD(p));
 		break;
-	case 11: /* stm: STR(reg,INDIRI4(ADD(reg,reg))) */
+	case 7: /* stm: STR(reg,INDIRI4(ADD(reg,reg))) */
 		kids[0] = LEFT_CHILD(p);
 		kids[1] = LEFT_CHILD(LEFT_CHILD(RIGHT_CHILD(p)));
 		kids[2] = RIGHT_CHILD(LEFT_CHILD(RIGHT_CHILD(p)));
 		break;
-	case 77: /* stm: VSTR(reg,INDIRI4(ADD(reg,imm10))) */
-	case 12: /* stm: STR(reg,INDIRI4(ADD(reg,imm12))) */
+	case 47: /* stm: VSTR(reg,INDIRI4(ADD(reg,imm10))) */
+	case 8: /* stm: STR(reg,INDIRI4(ADD(reg,imm12))) */
 		kids[0] = LEFT_CHILD(p);
 		kids[1] = LEFT_CHILD(LEFT_CHILD(RIGHT_CHILD(p)));
 		break;
-	case 71: /* stm: VCMP(reg,reg) */
-	case 67: /* reg: VDIV(reg,reg) */
-	case 66: /* reg: VSUB(reg,reg) */
-	case 65: /* reg: VADD(reg,reg) */
-	case 64: /* reg: VMUL(reg,reg) */
-	case 35: /* reg: RSB(reg,reg) */
-	case 23: /* stm: CMP(reg,reg) */
-	case 19: /* reg: SUB(reg,reg) */
-	case 18: /* reg: MUL(reg,reg) */
-	case 15: /* reg: SDIV(reg,reg) */
-	case 13: /* reg: ADD(reg,reg) */
+	case 41: /* stm: VCMP(reg,reg) */
+	case 37: /* reg: VDIV(reg,reg) */
+	case 36: /* reg: VSUB(reg,reg) */
+	case 35: /* reg: VADD(reg,reg) */
+	case 34: /* reg: VMUL(reg,reg) */
+	case 21: /* reg: RSB(reg,reg) */
+	case 17: /* stm: CMP(reg,reg) */
+	case 13: /* reg: SUB(reg,reg) */
+	case 12: /* reg: MUL(reg,reg) */
+	case 11: /* reg: SDIV(reg,reg) */
+	case 9: /* reg: ADD(reg,reg) */
 		kids[0] = LEFT_CHILD(p);
 		kids[1] = RIGHT_CHILD(p);
 		break;
-	case 81: /* reg: ASR(reg,imm5) */
-	case 80: /* reg: LSL(reg,imm5) */
-	case 72: /* stm: VCMPz(reg) */
-	case 70: /* reg: VNEG(reg) */
-	case 69: /* reg: vcvt_floatingPointToSigned(reg) */
-	case 68: /* reg: vcvt_signedToFloatingPoint(reg) */
-	case 63: /* reg: VMOV(reg) */
-	case 59: /* stm: BX(reg) */
-	case 56: /* reg: LSR(reg,imm5) */
-	case 55: /* reg: CLZ(reg) */
-	case 52: /* reg: MOV(reg) */
-	case 36: /* reg: RSB(reg,simm8) */
-	case 24: /* stm: CMP(reg,simm8) */
-	case 20: /* reg: SUB(reg,simm8) */
-	case 14: /* reg: ADD(reg,simm8) */
+	case 51: /* reg: ASR(reg,imm5) */
+	case 50: /* reg: LSL(reg,imm5) */
+	case 42: /* stm: VCMPz(reg) */
+	case 40: /* reg: VNEG(reg) */
+	case 39: /* reg: vcvt_floatingPointToSigned(reg) */
+	case 38: /* reg: vcvt_signedToFloatingPoint(reg) */
+	case 33: /* reg: VMOV(reg) */
+	case 29: /* stm: BX(reg) */
+	case 26: /* reg: LSR(reg,imm5) */
+	case 25: /* reg: CLZ(reg) */
+	case 23: /* reg: MOV(reg) */
+	case 22: /* reg: RSB(reg,simm8) */
+	case 18: /* stm: CMP(reg,simm8) */
+	case 14: /* reg: SUB(reg,simm8) */
+	case 10: /* reg: ADD(reg,simm8) */
 		kids[0] = LEFT_CHILD(p);
 		break;
-	case 21: /* reg: ADD(MUL(reg,reg),reg) */
+	case 15: /* reg: ADD(MUL(reg,reg),reg) */
 		kids[0] = LEFT_CHILD(LEFT_CHILD(p));
 		kids[1] = RIGHT_CHILD(LEFT_CHILD(p));
 		kids[2] = RIGHT_CHILD(p);
 		break;
-	case 22: /* reg: SUB(reg,MUL(reg,reg)) */
+	case 16: /* reg: SUB(reg,MUL(reg,reg)) */
 		kids[0] = LEFT_CHILD(p);
 		kids[1] = LEFT_CHILD(RIGHT_CHILD(p));
 		kids[2] = RIGHT_CHILD(RIGHT_CHILD(p));
 		break;
-	case 82: /* reg: LDR(INDIRI4(ADD(reg,LSL(reg,imm5)))) */
+	case 52: /* reg: LDR(INDIRI4(ADD(reg,LSL(reg,imm5)))) */
 		kids[0] = LEFT_CHILD(LEFT_CHILD(LEFT_CHILD(p)));
 		kids[1] = LEFT_CHILD(RIGHT_CHILD(LEFT_CHILD(LEFT_CHILD(p))));
 		break;
-	case 83: /* stm: STR(reg,INDIRI4(ADD(reg,LSL(reg,imm5)))) */
+	case 53: /* stm: STR(reg,INDIRI4(ADD(reg,LSL(reg,imm5)))) */
 		kids[0] = LEFT_CHILD(p);
 		kids[1] = LEFT_CHILD(LEFT_CHILD(RIGHT_CHILD(p)));
 		kids[2] = LEFT_CHILD(RIGHT_CHILD(LEFT_CHILD(RIGHT_CHILD(p))));

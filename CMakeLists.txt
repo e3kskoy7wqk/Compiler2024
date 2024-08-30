@@ -94,15 +94,15 @@ set(BACKEND_SRCS
 
     # 后端共性代码
     backend/codegen.c
+    backend/ra-colorize.c
+    backend/linearscan.c
 
     # 后端产生ARM32汇编指令
     ${IBURG_OUTPUT}
-    backend/arm32/InstSelectorArm32.c
     backend/arm32/CodeGeneratorArm32.c
     backend/arm32/CodeGeneratorArm32.h
-    backend/arm32/ArmInst.c
-    backend/arm32/linearscan.c
-    backend/arm32/ra-colorize.c
+    backend/arm32/ILocArm32.c
+    backend/arm32/InstSelectorArm32.c
 )
 
 # 中间IR源代码集合

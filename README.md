@@ -36,7 +36,6 @@ SSA形式的消去|remove_ssa_form|
 SSA形式的消去|rewrite_out_of_ssa|
 懒惰代码移动|LazyCodeMotion|
 复写传播|copyprop|
-复写传播（未使用）|CopyPropPass|
 局部复写传播|local_copyprop_pass|
 死代码消除|perform_ssa_dce|
 弱强度削减|StraightLineStrengthReduce|
