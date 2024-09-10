@@ -2,9 +2,9 @@
 #define yyHEADER_H 1
 #define yyIN_HEADER 1
 
-#line 5 "lex.yy.h"
+#line 6 "lex.yy.h"
 
-#line 7 "lex.yy.h"
+#line 8 "lex.yy.h"
 
 #define  YY_INT_ALIGNED short int
 
@@ -218,11 +218,14 @@ extern char *yytext;
 
 #endif
 
-/*windows compatibility case*/
-#include <io.h>
-#define isatty _isatty
-#define fileno _fileno
-    
+#ifndef YY_NO_UNISTD_H
+/* Special case for "unistd.h", since it is non-ANSI. We include it way
+ * down here because we want the user's section 1 to have been scanned first.
+ * The user has a chance to override it with an option.
+ */
+#include <unistd.h>
+#endif
+
 #ifndef YY_EXTRA_TYPE
 #define YY_EXTRA_TYPE void *
 #endif
@@ -465,9 +468,9 @@ extern int yylex (void);
 #undef yyTABLES_NAME
 #endif
 
-#line 126 "D:/compiler/frontend/flexbison/lex.l"
+#line 126 "/data/miaotc/compiler/frontend/flexbison/lex.l"
 
 
-#line 471 "lex.yy.h"
+#line 475 "lex.yy.h"
 #undef yyIN_HEADER
 #endif /* yyHEADER_H */

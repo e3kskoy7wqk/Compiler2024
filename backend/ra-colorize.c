@@ -7,6 +7,20 @@
 /* # define SIMPLE
 */
 
+#ifndef min
+#define min(a,b) ((a) <= (b)? (a):(b))
+#endif
+#ifndef max
+#define max(a,b) ((a) >= (b)? (a):(b))
+#endif
+
+/* the infamous mp_int structure */
+typedef struct  {
+    int used, alloc;
+    int sign;
+    unsigned short *dp;
+} mp_int;
+
 /* 对给定节点的分类(即它处于什么状态)。  */
 enum ra_node_type
 {
@@ -32,8 +46,11 @@ typedef struct
     int hard_num;
     int spill_slot;
     int num_conflicts;
-    int weight;
     int reg_class;
+
+    /* Cost of spilling.  */
+    mp_int spill_cost;
+    unsigned int orig_spill_cost;
 
 # if !defined(SIMPLE)
     bitmap moves;
@@ -70,57 +87,8 @@ struct pair
 struct reg_class_desc
 {
     unsigned next_avail, max_num;
-    unsigned used_num, max_used;
     bitmap available;
 };
-
-struct Range
-{
-    int _from; /* from (inclusive) */
-    int _to; /* to (exclusive) */
-    struct Range* _next; /* linear list of Ranges */
-    struct Interval* interval;
-};
-
-struct Interval
-{
-    /* Unique id of the node.  */
-    int uid;
-
-    /* sorted list of Ranges */
-    struct Range* _first;
-    int vreg;
-    int weight;
-};
-
-
-static struct Interval* create_interval(int vreg)
-{
-    struct Interval* interval = (struct Interval *) xmalloc (sizeof (struct Interval));
-    static int counter = 0;
-    memset (interval, '\0', sizeof (*interval));
-    interval->vreg = vreg;
-    interval->uid = counter++;
-    return interval;
-}
-
-static void delete_interval(struct Interval* interval)
-{
-    struct Range * p,*r;
-
-    if  (interval)
-    {
-        p=interval->_first;
-        while(p)
-        {
-            r=p;
-            p=p->_next;
-            free(r);
-        }
-
-        free(interval);
-    }
-}
 
 static int compare_pairs( struct pair *arg1, struct pair *arg2 )
 {
@@ -147,91 +115,235 @@ compare_insns (LIR_Op first, LIR_Op second)
     return( ret );
 }
 
-static void add_range(struct Interval* it, int from, int to)
+#define MP_MASK          ((((unsigned short)1)<<((unsigned short)MP_DIGIT_BIT))-((unsigned short)1))
+#define MP_DIGIT_BIT 15
+#define MP_SIZEOF_BITS(type)    ((size_t)8 * sizeof(type))
+
+/* 根据给定的长度初始化一个mp_init对象 */
+static void mp_init_size(mp_int *a, int size)
 {
-    if (it->_first && it->_first->_from <= to)
-    {
-        /* 连接相交范围  */
-        it->_first->_from = min(from, it->_first->_from);
-        it->_first->_to  = max(to,   it->_first->_to);
-    }
-    else
-    {
-        /* 插入新范围  */
-        struct Range* next = it->_first;
-        it->_first = (struct Range *) xmalloc (sizeof (struct Range));
-        it->_first->_from = from;
-        it->_first->_to = to;
-        it->_first->_next = next;
-        it->_first->interval = it;
+    /* 分配所需的内存 */
+    a->dp = (unsigned short *) xcalloc((size_t)size, sizeof(unsigned short));
+
+    /* 将used设置为0，分配的数字设置为默认精度，符号设置为正数 */
+    a->used  = 0;
+    a->alloc = size;
+    a->sign  = 0;
+}
+
+static void mp_set_u32(mp_int * a, unsigned int b)
+{
+    int i = 0;
+    while (b != 0u) {
+        a->dp[i++] = ((unsigned short)b & MP_MASK);
+        if (MP_SIZEOF_BITS(unsigned int) <= MP_DIGIT_BIT) { break; }
+        b >>= ((MP_SIZEOF_BITS(unsigned int) <= MP_DIGIT_BIT) ? 0 : MP_DIGIT_BIT);
+    }   
+    a->used = i;
+    a->sign = 0;
+    if (a->alloc - a->used > 0) {
+        memset(a->dp + a->used, 0, (size_t)(a->alloc - a->used) * sizeof(unsigned short));
     }
 }
 
-static void add_def(struct Interval* interval, int def_pos)
+/* clear one (frees)  */
+static void mp_clear(mp_int *a)
 {
-    if (interval != NULL)
-    {
-        struct Range* r = interval->_first;
-        if (r != NULL && r->_from <= def_pos)
+    /* 只有在a之前没有被释放时才执行操作 */
+    if (a->dp != NULL) {
+        /* 释放内存 */
+        free(a->dp);
+
+        /* 重置成员，使调试更容易 */
+        a->dp    = NULL;
+        a->alloc = a->used = 0;
+        a->sign  = 0;
+    }
+}
+
+/* 按需增长 */
+static void mp_grow(mp_int *a, int size)
+{
+    /* 如果分配大小较小，则分配更多的内存 */
+    if (a->alloc < size) {
+        unsigned short *dp;
+
+        /* 重新分配数组a->dp
+         *
+         * 我们将返回值存储在一个临时变量中，以防操作失
+         * 败——我们不想覆盖a的dp成员。
+         */
+        dp = (unsigned short *) xrealloc(a->dp,
+                                     (size_t)size * sizeof(unsigned short));
+
+        /* 重新分配成功，设置a->dp */
+        a->dp = dp;
+
+        /* 多余位数为零 */
+        if (size - a->alloc > 0)
         {
-            /* 更新起始点(当一个范围第一次被创建用于某个用途时，它的起始点是
-               当前块的开始，直到遇到一个def)。  */
-            r->_from = def_pos;
+            memset(a->dp + a->alloc, 0, (size_t)(size - a->alloc) * sizeof(unsigned short));
         }
-        else
-        {
-            /* 死值  */
-            add_range(interval, def_pos, def_pos + 1);
-        }
-
+        a->alloc = size;
     }
 }
 
-static void add_use(struct Interval* interval, int from, int to)
+/* 削减未使用数字
+ *
+ * 这用于确保修剪前导零，并且“used”的前导数字通常会非常快地
+ * 非零。如果没有更多的前导数字，也可以修复符号
+ */
+static void mp_clamp(mp_int *a)
 {
-    add_range(interval, from, to);
+    /* 当最高有效数字为零时减少used。
+     */
+    while ((a->used > 0) && (a->dp[a->used - 1] == 0u))
+    {
+        --(a->used);
+    }
+
+    /* 如果为零，则重置标志位 */
+    if (a->used == 0)
+    {
+        a->sign = 0;
+    }
 }
 
-static int intersects_at(const struct Range* r1, const struct Range* r2)
+static void mp_add(const mp_int *a, const mp_int *b, mp_int *c)
 {
-    if (!r1)      return -1;
-    if (!r2)      return -1;
-    do {
-        if (r1->_from < r2->_from) {
-            if (r1->_to <= r2->_from) {
-                r1 = r1->_next;
-                if (r1 == NULL)
-                    return -1;
-            } else {
-                return r2->_from;
-            }
-        } else if (r2->_from < r1->_from) {
-            if (r2->_to <= r1->_from) {
-                r2 = r2->_next;
-                if (r2 == NULL)
-                    return -1;
-            } else {
-                return r1->_from;
-            }
-        } else { // r1->from() == r2->from()
-            if (r1->_from == r1->_to) {
-                r1 = r1->_next;
-                if (r1 == NULL)
-                    return -1;
-            } else if (r2->_from == r2->_to) {
-                r2 = r2->_next;
-                if (r2 == NULL)
-                    return -1;
-            } else {
-                return r1->_from;
-            }
+    int oldused, min, max, i;
+    unsigned short u;
+
+    c->sign = a->sign;
+
+    /* 计算大小，我们让|a| <= |b|这意味着我们需要对它们进行排序。
+     * “x”将指向数字最多的输入
+     */
+    if (a->used < b->used)
+    {
+        const mp_int * _c = a; a = b; b = _c;
+    }
+
+    min = b->used;
+    max = a->used;
+
+    /* 初始化结果 */
+    mp_grow(c, max + 1);
+
+    /* 获取旧的使用过的数字计数并设置新的 */
+    oldused = c->used;
+    c->used = max + 1;
+
+    /* 进位归零 */
+    u = 0;
+    for (i = 0; i < min; i++)
+    {
+        /* 计算一位数的和，T[i] = A[i] + B[i] + U */
+        c->dp[i] = a->dp[i] + b->dp[i] + u;
+
+        /* U = T[i]的进位 */
+        u = c->dp[i] >> (unsigned short)MP_DIGIT_BIT;
+
+        /* 去掉T[i]的进位 */
+        c->dp[i] &= MP_MASK;
+    }
+
+    /* 现在复制较高位的数字（如果有的话），即在A+B中，如果A或B有更多位数，则将这些位数添加进去。
+     */
+    if (min != max)
+    {
+        for (; i < max; i++)
+        {
+            /* T[i] = A[i] + U */
+            c->dp[i] = a->dp[i] + u;
+
+            /* U = T[i]的进位 */
+            u = c->dp[i] >> (unsigned short)MP_DIGIT_BIT;
+
+            /* 去掉T[i]的进位 */
+            c->dp[i] &= MP_MASK;
         }
-    } while (TRUE);
+    }
+
+    /* 添加进位 */
+    c->dp[i] = u;
+
+    /* clear digits above oldused */
+    if (oldused - c->used > 0)
+    {
+        memset(c->dp + c->used, 0, (size_t)(oldused - c->used) * sizeof(unsigned short));
+    }
+
+    mp_clamp(c);
 }
 
-static BOOL intersects(const struct Range* r1, const struct Range* r2)
+static void mp_mul(const mp_int *a, const mp_int *b, mp_int *c)
 {
-    return intersects_at(r1, r2) != -1; 
+    int digs = a->used + b->used + 1;
+    mp_int  t;
+    int     pa, ix;
+
+    mp_init_size(&t, digs);
+    t.used = digs;
+
+    /* 直接计算乘积的位数 */
+    pa = a->used;
+    for (ix = 0; ix < pa; ix++)
+    {
+        int iy, pb;
+        unsigned short u = 0;
+
+        /* 将我们自己限制在输出位数上 */
+        pb = min(b->used, digs - ix);
+
+        /* 计算输出的列并传播进位 */
+        for (iy = 0; iy < pb; iy++)
+        {
+            /* 计算mp_word列 */
+            unsigned int r = (unsigned int)t.dp[ix + iy] +
+                        ((unsigned int)a->dp[ix] * (unsigned int)b->dp[iy]) +
+                        (unsigned int)u;
+
+            /* 新列是结果的较低部分 */
+            t.dp[ix + iy] = (unsigned short)(r & (unsigned int)MP_MASK);
+
+            /* 从结果中获取进位字 */
+            u       = (unsigned short)(r >> (unsigned int)MP_DIGIT_BIT);
+        }
+        /* 如果进位小于digs，则设置进位 */
+        if ((ix + iy) < digs)
+        {
+           t.dp[ix + pb] = u;
+        }
+    }
+
+    mp_clamp(&t);
+    do { mp_int _c = t; t = *c; *c = _c; } while (0);
+
+    mp_clear(&t);
+}
+
+/* 比较两个int*/
+static int mp_cmp(const mp_int *a, const mp_int *b)
+{
+    int n;
+
+    /* 根据非零数字的个数进行比较 */
+    if (a->used != b->used)
+    {
+        return a->used > b->used ? 1 : -1;
+    }
+
+    /* 基于数字的比较  */
+    for (n = a->used; n --> 0;)
+    {
+        if (a->dp[n] != b->dp[n])
+        {
+            return a->dp[n] > b->dp[n] ? 1 : -1;
+        }
+    }
+
+    return 0;
 }
 
 static int LocateVex(PhaseIFG *G,int u)
@@ -264,9 +376,9 @@ static int InsertVex(PhaseIFG *G, int v, int reg_class, struct Backend* backend)
     (*G).xlist[(*G). vexnum].firstout = BITMAP_XMALLOC ();
     (*G).xlist[(*G). vexnum].v = v;
     (*G).xlist[(*G). vexnum].reg_class = reg_class;
-    (*G).xlist[(*G). vexnum].interval = create_interval (v);
     (*G).xlist[(*G). vexnum].hard_num = backend->is_virtual_register (v) ? -1 : v;
     (*G).xlist[(*G). vexnum].spill_slot = -1;
+    mp_init_size (&(*G).xlist[(*G). vexnum].spill_cost, 1);
 
 # if !defined(SIMPLE)
     (*G).xlist[(*G). vexnum].moves = BITMAP_XMALLOC ();
@@ -288,8 +400,6 @@ static void DeleteVex(PhaseIFG *G,int k)
     /* 以下删除顶点v的出弧 */
     bitmap_clear ((*G). xlist[k].firstout);
     bitmap_clear ((*G). xlist[k].firstin);
-    delete_interval ((*G).xlist[k].interval);
-    (*G).xlist[k].interval = create_interval ((*G). xlist[k].v);
 
 # if !defined(SIMPLE)
     bitmap_clear ((*G). xlist[k].moves);
@@ -343,7 +453,7 @@ void DestroyGraph(PhaseIFG *G)
     {
         BITMAP_XFREE ((*G).xlist[j].firstin);
         BITMAP_XFREE ((*G).xlist[j].firstout);
-        delete_interval ((*G).xlist[j].interval);
+        mp_clear (&(*G).xlist[j].spill_cost);
 
 # if !defined(SIMPLE)
         BITMAP_XFREE ((*G).xlist[j].moves);
@@ -617,83 +727,6 @@ number_instructions (LIST blocks, PhaseIFG *g, struct Backend* backend)
             avl_insert (g->insn_map, op);
         }
     }
-}
-
-static int calc_to (struct Interval* cur)
-{
-    struct Range* r = cur->_first;
-    while (r->_next != NULL)
-    {
-        r = r->_next;
-    }
-    return r->_to;
-}
-
-static void
-build_intervals (PhaseIFG *g, LIST blocks, struct Backend* backend)
-{
-    basic_block* block;
-    LIR_Op op;
-    unsigned bit;
-    bitmap_iterator bi;
-    int u;
-    int start;
-    int k;
-    int block_from;
-    int block_to;
-    bitmap temp = BITMAP_XMALLOC ();
-
-    for(  block=(basic_block *)List_Last(blocks)
-       ;  block!=NULL
-       ;  block = (basic_block *)List_Prev((void *)block)
-       )
-    {
-        block_to = ((LIR_Op)List_First (backend->get_code (*block)))->uid;
-        block_from = ((LIR_Op)List_Last (backend->get_code (*block)))->uid;
-        for (bmp_iter_set_init (&bi, backend->get_live_out (*block), 0, &bit);
-             bmp_iter_set (&bi, &bit);
-             bmp_iter_next (&bi, &bit))
-        {
-            u = LocateVex (g, bit);
-            add_use (GetVex(g, u)->interval, block_from, block_to + 1);
-        }
-
-        for(  op=(LIR_Op)List_Last(backend->get_code (*block))
-           ;  op!=NULL
-           ;  op = (LIR_Op)List_Prev((void *)op)
-           )
-        {
-            /* 如果指令销毁调用者保存的寄存器，则为每个寄存器添加一个临时范围。  */
-            if (backend-> is_call (op))
-            {
-                start = backend->handle_method_arguments (op)->uid;
-                for (k = 0; k < backend->num_caller_save_registers; k++)
-                {
-                    u = LocateVex (g, backend->caller_save_registers[k]);
-                    add_use (GetVex(g, u)->interval, start, op->uid + 1);
-                }
-            }
-
-            backend->output_regs (op, temp);
-            for (bmp_iter_set_init (&bi, temp, 0, &bit);
-                 bmp_iter_set (&bi, &bit);
-                 bmp_iter_next (&bi, &bit))
-            {
-                u = LocateVex (g, bit);
-                add_def (GetVex(g, u)->interval, op->uid);
-            }
-            backend->input_regs (op, temp);
-            for (bmp_iter_set_init (&bi, temp, 0, &bit);
-                 bmp_iter_set (&bi, &bit);
-                 bmp_iter_next (&bi, &bit))
-            {
-                u = LocateVex (g, bit);
-                add_use (GetVex (g, u)->interval, block_from, op->uid);
-            }
-        }
-    }
-
-    BITMAP_XFREE (temp);
 }
 
 static void
@@ -1055,12 +1088,14 @@ freeze (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backend)
 }
 # endif /* SIMPLE */
 
+#if 0
 /* 选择最便宜的可能溢出的结点(我们在需要的时候才会真正溢出)。  */
 static void
 select_spill (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backend)
 {
     unsigned i;
     bitmap_iterator bi;
+    int selected_reg = bitmap_first_set_bit (g->web_lists[SPILL]);
     int a = bitmap_first_set_bit (g->web_lists[SPILL]);
 
     /* 选择活跃区间最长的寄存器溢出。  */
@@ -1076,7 +1111,42 @@ select_spill (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backe
     freeze_moves (g, a, classes, backend);
 # endif /* SIMPLE */
 }
+#endif
 
+#if 1
+/* 选择最便宜的可能溢出的结点(我们在需要的时候才会真正溢出)。  */
+static void
+select_spill (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backend)
+{
+    unsigned i;
+    bitmap_iterator bi;
+    int selected_reg = bitmap_first_set_bit (g->web_lists[SPILL]);
+
+    for (bmp_iter_set_init (&bi, g->web_lists[SPILL], 0, &i);
+         bmp_iter_set (&bi, &i);
+         bmp_iter_next (&bi, &i))
+    {
+        if  (GetVex (g, i)->orig_spill_cost != 0x7FFFFFFF)
+        {
+            selected_reg = i;
+            break;
+        }
+    }
+
+    for (bmp_iter_set_init (&bi, g->web_lists[SPILL], 0, &i);
+         bmp_iter_set (&bi, &i);
+         bmp_iter_next (&bi, &i))
+        if  (GetVex (g, i)->orig_spill_cost != 0x7FFFFFFF &&
+             mp_cmp (&GetVex (g, i)->spill_cost, &GetVex (g, selected_reg)->spill_cost) < 0)
+            selected_reg = i;
+
+    bitmap_clear_bit (g->web_lists[SPILL], selected_reg);
+    bitmap_set_bit (g->web_lists[SIMPLIFY], selected_reg);
+# if !defined(SIMPLE)
+    freeze_moves (g, selected_reg, classes, backend);
+# endif /* SIMPLE */
+}
+#endif
 
 /* 将颜色分配给select栈上的所有节点。并更新合并后的网络的颜色。  */
 static void
@@ -1111,7 +1181,7 @@ assign_colors (control_flow_graph cfun, PhaseIFG *g, struct reg_class_desc *clas
         if  (GetVex (g, v)->hard_num == -1 &&
              bitmap_empty_p (temp_bitmap))
         {
-            if  (GetVex (g, v)->weight == 0x7FFFFFFF)
+            if  (GetVex (g, v)->orig_spill_cost == 0x7FFFFFFF)
                 fatal ("attempt to spill already spilled interval!");
             bitmap_set_bit (g->spilledRegs, v);
             GetVex (g, v)->spill_slot = backend->assign_spill_slot (cfun, cl);
@@ -1147,8 +1217,6 @@ assign_reg_num (PhaseIFG *g, LIST blocks, struct avl_table *virtual_regs, struct
 
 static void insert_spill_code(PhaseIFG *g, struct avl_table *virtual_regs, LIST blocks, struct Backend* backend)
 {
-    int start;
-    int end;
     basic_block* block;
     LIR_Op op, next_op;
     int i;
@@ -1174,17 +1242,12 @@ static void insert_spill_code(PhaseIFG *g, struct avl_table *virtual_regs, LIST 
                 {
                     w = LocateVex (g, backend->as_register (op, i)->vregno);
 
-                    start = op->uid - !backend->op_output_p (op, i);
-                    end = 1 + op->uid - !backend->op_output_p (op, i);
-
                     operand.vreg = backend->gen_vreg (virtual_regs, -1, backend->as_register (op, i)->rclass);
                     backend->regdesc (operand.vreg, backend->gen_vreg (virtual_regs, backend->as_register (op, i)->vregno, 0), NULL, NULL, FALSE);
     
                     v = InsertVex (g, operand.vreg->vregno, operand.vreg->rclass, backend);
-                    add_use (GetVex (g, v)->interval, start, end);
-                    add_def (GetVex (g, v)->interval, start);
                     backend->set_op (op, i, &operand);
-                    GetVex (g, v)->weight = 0x7FFFFFFF;
+                    GetVex (g, v)->orig_spill_cost = 0x7FFFFFFF;
                     if  (backend->op_output_p (op, i))
                         backend->spill_out (op, operand.vreg, GetVex (g, w)->spill_slot, virtual_regs);
                     else
@@ -1221,6 +1284,67 @@ build_worklists (PhaseIFG *g, struct avl_table *virtual_regs, struct reg_class_d
     }
 }
 
+static void
+estimate_spill_costs (control_flow_graph fn, PhaseIFG *g, struct Backend* backend)
+{
+    basic_block* block;
+    LIR_Op op;
+    int i;
+    vreg_t vreg;
+    mp_int frequency;
+    mp_int temp;
+    mp_int ten;
+
+    /* 初始化逐出代价。  */
+    for (i = 0; i < g->vexnum; i++)
+    {
+        mp_clear (&GetVex (g, i)->spill_cost);
+        mp_init_size (&GetVex (g, i)->spill_cost, 1);
+        mp_set_u32 (&GetVex (g, i)->spill_cost, 0);
+    }
+
+    mp_init_size (&ten, 1);
+    mp_set_u32 (&ten, 10);
+
+    /* 计算逐出代价。  */
+    for(  block=(basic_block*) List_Last(fn->basic_block_info)
+       ;  block!=NULL
+       ;  block = (basic_block*) List_Prev((void *)block)
+       )
+    {
+        for (i = loop_depth (*block), mp_init_size (&frequency, 1), mp_set_u32 (&frequency, 1);
+            i > 0;
+            i--)
+        {
+            mp_init_size (&temp, 1);
+            mp_mul (&frequency, &ten, &temp);
+            do { mp_int _c = temp; temp = frequency; frequency = _c; } while (0);
+            mp_clear (&temp);
+        }
+
+        for(  op=(LIR_Op) List_Last(backend->get_code (*block))
+           ;  op!=NULL
+           ;  op = (LIR_Op) List_Prev((void *)op)
+           )
+        {
+            for (i = 0; i < backend->operand_count (op); i++)
+            {
+                vreg = backend->as_register (op, i);
+                if  (vreg)
+                {
+                    mp_init_size (&temp, 1);
+                    mp_add(&GetVex (g, LocateVex (g, vreg->vregno))->spill_cost, &frequency, &temp);
+                    do { mp_int _c = temp; temp = GetVex (g, LocateVex (g, vreg->vregno))->spill_cost; GetVex (g, LocateVex (g, vreg->vregno))->spill_cost = _c; } while (0);
+                    mp_clear (&temp);
+                }
+            }
+        }
+
+        mp_clear (&frequency);
+    }
+    mp_clear (&ten);
+}
+
 /* 寄存器分配的入口点。  */
 void
 ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs, struct Backend* backend)
@@ -1242,6 +1366,7 @@ ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs, struct
         classes[i].max_num = backend->classes[i].max_num;
     }
 
+    flow_loops_find (fn);
     CreateDG (&g);
 
     for(  iter = (vreg_t)avl_t_first (&trav, virtual_regs)
@@ -1257,10 +1382,10 @@ ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs, struct
     number_instructions (blocks, &g, backend);
 
     compute_global_live_sets (blocks, backend);
-    build_intervals (&g, blocks, backend);
 
     build_i_graph (&g, blocks, backend);
 /*  Display (&g);*/
+    estimate_spill_costs (fn, &g, backend);
 
     bitmap_clear (g.web_lists[PRECOLORED]);
     for (i = 0; i < g.vexnum; i++)
@@ -1325,6 +1450,7 @@ ra_colorize_graph (control_flow_graph fn, struct avl_table *virtual_regs, struct
 
     assign_reg_num (&g, blocks, virtual_regs, backend);
 
+    flow_loops_free (&fn->loops);
     DestroyGraph (&g);
     List_Destroy (&blocks);
     for (i = 0; i < backend->class_count; i++)
