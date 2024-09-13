@@ -167,6 +167,7 @@ static int compare( reg_mapping *arg1, reg_mapping *arg2 )
 
     return( ret );
 }
+
 static int
 compare_tree (NODEPTR_TYPE t1, NODEPTR_TYPE t2)
 {
@@ -993,6 +994,155 @@ setreg (varpool_node vnode, NODEPTR_TYPE p, PINTERNAL_DATA pmydata)
 }
 
 static NODEPTR_TYPE
+GetTreeNode (varpool_node vnode, PINTERNAL_DATA pmydata)
+{
+    NODEPTR_TYPE p;
+    vreg_t vreg;
+
+    p = getreg (vnode, pmydata->reg_map);
+    if  (!p)
+    {
+        vreg = gen_vregArm32 (pmydata->virtual_regs, -1, vnode->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
+        regdescArm32 (vreg, NULL, vnode, NULL, FALSE);
+        location_descriptorArm32 (vnode, NULL, vreg, FALSE, FALSE);
+        p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
+        p->operand.vreg = vreg;
+        setreg (vnode, p, pmydata);
+    }
+
+    return p;
+}
+
+/* 对于同一基本块中的中间指令insn1、insn2，判断insn2是否在insn1之后.  */
+static BOOL is_after(IRInst insn1, IRInst insn2) 
+{
+    IRInst *curs;
+    for(  curs=InterCodeGetCursor (insn1->bb->cfg->code, insn1)
+       ;  curs!=NULL
+       ;  curs = (IRInst *) List_Next((void *)curs)
+       )
+        if  (insn2 == *curs)
+            return TRUE;
+    return FALSE;
+}
+
+/* 中间指令的源操作数是否都只被定值了一次.  */
+static BOOL
+define_once (varpool_node_set set, IRInst inst)
+{
+    int i;
+    varpool_node vnode;
+
+    for (i = IRInstGetNumOperands (inst) - 1; i >= 0; i--)
+    {
+        if  (! IRInstIsOutput (inst, i))
+        {
+            vnode = varpool_get_node (set, IRInstGetOperand (inst, i));
+            if  (bitmap_count_bits (vnode->_defines) > 1)
+                return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static NODEPTR_TYPE
+handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_t vreg, PINTERNAL_DATA pmydata)
+{
+    NODEPTR_TYPE old_node;
+    BOOL delay = TRUE;
+    int i;
+    varpool_node vnode;
+    bitmap_iterator bi;
+    unsigned insn_index;
+    IRInst target;
+
+    for (i = IRInstGetNumOperands (inst) - 1; i >= 0; i--)
+    {
+        vnode = varpool_get_node (set, IRInstGetOperand (inst, i));
+        if  (IRInstIsOutput (inst, i) &&
+             /* 不止一处使用。  */
+             (bitmap_count_bits (vnode->_uses) > 1 ||
+             /* 多次定值。  */
+             bitmap_count_bits (vnode->_defines) > 1))
+        {
+            delay = FALSE;
+            break;
+        }
+
+        /* 不在同一个循环内使用。  */
+        if  (IRInstIsOutput (inst, i) &&
+             !bitmap_empty_p (vnode->_uses) &&
+             (InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->_uses))->bb->loop_father != inst->bb->loop_father ||
+             ! define_once (set, inst)))
+        {
+            delay = FALSE;
+            break;
+        }
+
+        if  (! IRInstIsOutput (inst, i) &&
+             bitmap_count_bits (vnode->_defines) > 1 &&
+             vnode->var->sdSymKind == SYM_VAR &&
+             ! vnode->var->sdVar.sdvConst &&
+             vnode->var->sdType->tdTypeKind <= TYP_lastIntrins)
+        {
+            /* 对操作数的定值在基本块内当前指令之后。  */
+            for (bmp_iter_set_init (&bi, vnode->_defines, 0, &insn_index);
+                 bmp_iter_set (&bi, &insn_index);
+                 bmp_iter_next (&bi, &insn_index))
+            {
+                target = InterCodeGetInstByID (inst->bb->cfg->code, insn_index);
+                if  (target->bb == inst->bb &&
+                     is_after (inst, target))
+                {
+                    delay = FALSE;
+                    break;
+                }
+            }
+        }
+
+        /* 使用未定值的变量。  */
+        if  (bitmap_count_bits (vnode->_uses) &&
+             bitmap_empty_p (vnode->_defines) &&
+             vnode->var->sdSymKind == SYM_VAR &&
+             ! vnode->var->sdVar.sdvConst &&
+             vnode->var->sdType->tdTypeKind <= TYP_lastIntrins)
+            warning (comp->cmpConfig.input_file_name, inst->line, "%s is used uninitialized in this function", stGetSymName (vnode->var));
+
+        /* 定值不支配使用。  */
+        if  (vnode->var->sdSymKind == SYM_VAR &&
+             ! vnode->var->sdVar.sdvConst &&
+             vnode->var->sdType->tdTypeKind <= TYP_lastIntrins &&
+             ! IRInstIsOutput (inst, i) &&
+             bitmap_count_bits (vnode->_defines) == 1 &&
+             ! bitmap_bit_p (inst->bb->dom[0], InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->_defines))->bb->index))
+            warning (comp->cmpConfig.input_file_name, inst->line, "%s may be used uninitialized in this function", stGetSymName (vnode->var));
+    }
+
+    if  (delay)
+    {
+        old_node = avl_find (pmydata->node_map, p);
+        if  (old_node)
+        {
+            LEFT_CHILD(old_node) = LEFT_CHILD(p);
+            RIGHT_CHILD(old_node) = RIGHT_CHILD(p);
+            old_node->op = p->op;
+            LEFT_CHILD(p) = RIGHT_CHILD(p) = NULL;
+            p = old_node;
+        }
+    }
+    else
+    {
+        if  (pmydata->ddata)
+            dwarfout_line (inst, pmydata);
+        commit (inst->bb, p, burmArm32_reg_NT, pmydata);
+        p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
+        p->operand.vreg = vreg;
+    }
+
+    return p;
+}
+
+static NODEPTR_TYPE
 load_immediate (basic_block block, vreg_t dest_reg, int num, enum var_types type, PINTERNAL_DATA pmydata)
 {
     NODEPTR_TYPE p;
@@ -1145,26 +1295,6 @@ static NODEPTR_TYPE store_base(basic_block block, NODEPTR_TYPE src_reg, NODEPTR_
     return p;
 }
 
-static NODEPTR_TYPE
-GetTreeNode (varpool_node vnode, PINTERNAL_DATA pmydata)
-{
-    NODEPTR_TYPE p;
-    vreg_t vreg;
-
-    p = getreg (vnode, pmydata->reg_map);
-    if  (!p)
-    {
-        vreg = gen_vregArm32 (pmydata->virtual_regs, -1, vnode->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS);
-        regdescArm32 (vreg, NULL, vnode, NULL, FALSE);
-        location_descriptorArm32 (vnode, NULL, vreg, FALSE, FALSE);
-        p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
-        p->operand.vreg = vreg;
-        setreg (vnode, p, pmydata);
-    }
-
-    return p;
-}
-
 /* 获取数组首地址+偏移量。  */
 static NODEPTR_TYPE
 getAddress (vreg_t dest_reg, varpool_node base, varpool_node addend, basic_block block, PINTERNAL_DATA pmydata)
@@ -1248,93 +1378,6 @@ getAddress (vreg_t dest_reg, varpool_node base, varpool_node addend, basic_block
 
         p = tree (pmydata->tree_nodes, ADD, p, tmp);
         p->operand.vreg = dest_reg ? dest_reg : gen_vregArm32 (pmydata->virtual_regs, -1, GENERAL_REGS);
-    }
-
-    return p;
-}
-
-static NODEPTR_TYPE
-handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_t vreg, PINTERNAL_DATA pmydata)
-{
-    NODEPTR_TYPE old_node;
-    BOOL delay = TRUE;
-    int i;
-    varpool_node vnode;
-    bitmap_iterator bi;
-    unsigned instr;
-
-    for (i = IRInstGetNumOperands (inst) - 1; i >= 0; i--)
-    {
-        vnode = varpool_get_node (set, IRInstGetOperand (inst, i));
-        if  (IRInstIsOutput (inst, i) &&
-             /* 不止一处使用。  */
-             (bitmap_count_bits (vnode->_uses) > 1 ||
-             /* 多次定值。  */
-             bitmap_count_bits (vnode->_defines) > 1 ||
-             /* 在另一个基本块使用。  */
-             (!bitmap_empty_p (vnode->_uses) &&
-             InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->_uses))->bb != inst->bb)))
-        {
-            delay = FALSE;
-            break;
-        }
-
-        if  (! IRInstIsOutput (inst, i) &&
-             bitmap_count_bits (vnode->_defines) > 1 &&
-             vnode->var->sdSymKind == SYM_VAR &&
-             ! vnode->var->sdVar.sdvConst &&
-             vnode->var->sdType->tdTypeKind <= TYP_lastIntrins)
-        {
-            /* 对操作数的定值在基本块内当前指令之后。  */
-            for (bmp_iter_set_init (&bi, vnode->_defines, 0, &instr);
-                 bmp_iter_set (&bi, &instr);
-                 bmp_iter_next (&bi, &instr))
-            {
-                if  (InterCodeGetInstByID (inst->bb->cfg->code, instr)->bb == inst->bb)
-                {
-                    delay = FALSE;
-                    break;
-                }
-            }
-        }
-
-        /* 使用未定值的变量。  */
-        if  (bitmap_count_bits (vnode->_uses) &&
-             bitmap_empty_p (vnode->_defines) &&
-             vnode->var->sdSymKind == SYM_VAR &&
-             ! vnode->var->sdVar.sdvConst &&
-             vnode->var->sdType->tdTypeKind <= TYP_lastIntrins)
-            warning (comp->cmpConfig.input_file_name, inst->line, "%s is used uninitialized in this function", stGetSymName (vnode->var));
-
-        /* 定值不支配使用。  */
-        if  (vnode->var->sdSymKind == SYM_VAR &&
-             ! vnode->var->sdVar.sdvConst &&
-             vnode->var->sdType->tdTypeKind <= TYP_lastIntrins &&
-             ! IRInstIsOutput (inst, i) &&
-             bitmap_count_bits (vnode->_defines) == 1 &&
-             ! bitmap_bit_p (inst->bb->dom[0], InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->_defines))->bb->index))
-            warning (comp->cmpConfig.input_file_name, inst->line, "%s may be used uninitialized in this function", stGetSymName (vnode->var));
-    }
-
-    if  (delay)
-    {
-        old_node = avl_find (pmydata->node_map, p);
-        if  (old_node)
-        {
-            LEFT_CHILD(old_node) = LEFT_CHILD(p);
-            RIGHT_CHILD(old_node) = RIGHT_CHILD(p);
-            old_node->op = p->op;
-            LEFT_CHILD(p) = RIGHT_CHILD(p) = NULL;
-            p = old_node;
-        }
-    }
-    else
-    {
-        if  (pmydata->ddata)
-            dwarfout_line (inst, pmydata);
-        commit (inst->bb, p, burmArm32_reg_NT, pmydata);
-        p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
-        p->operand.vreg = vreg;
     }
 
     return p;
@@ -2997,7 +3040,7 @@ BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab st
     pmydata->ddata = ddata;
     pmydata->backend = backend;
 
-    compute_dominators (func, FALSE);
+    flow_loops_find (func);
 
     blocks = List_Create ();
     pre_and_rev_post_order_compute (func, NULL, blocks, TRUE, FALSE);
@@ -3053,6 +3096,7 @@ fail:
     avl_destroy (pmydata->reg_map, (avl_item_func *) free);
     avl_destroy (pmydata->node_map, (avl_item_func *) NULL);
 
+    flow_loops_free (&func->loops);
     free (pmydata);
     return bSuccess; 
 }

@@ -358,20 +358,8 @@ spill_at_interval (struct op_reg *reg, struct op_reg** *active,
     int cl = reg->reg_class;
     struct op_reg *cand;
     unsigned int i;
+    BOOL bSuccess = FALSE;
     struct descriptor_s *constVal;
-
-    constVal = backend->get_location (backend->gen_vreg (virtual_regs, reg->order, 0));
-    if  (constVal != NULL &&
-         ! constVal->is_addr &&
-         constVal->base->var->sdSymKind == SYM_VAR &&
-         constVal->base->var->sdType->tdTypeKind == TYP_INT &&
-         constVal->base->var->sdVar.sdvConst &&
-         reg->interval->weight != 0x7FFFFFFF)
-    {
-        /* 它自身就是常量，逐出自身。  */
-        cand = reg;
-        goto exit;
-    }
 
     /* 尝试逐出占用寄存器的常量、全局变量地址。  */
     for (i = 0, cand = active[cl][0];
@@ -385,41 +373,68 @@ spill_at_interval (struct op_reg *reg, struct op_reg** *active,
              constVal->base->var->sdType->tdTypeKind == TYP_INT &&
              constVal->base->var->sdVar.sdvConst &&
              cand->interval->weight != 0x7FFFFFFF)
-            goto success;
+        {
+            bSuccess = TRUE;
+            break;
+        }
         if  (constVal != NULL &&
              constVal->is_addr &&
              constVal->base->var->sdSymKind == SYM_VAR &&
              is_global_var (constVal->base->var) &&
              (!constVal->base->var->sdVar.sdvConst || constVal->base->var->sdType->tdTypeKind > TYP_lastIntrins) &&
              cand->interval->weight != 0x7FFFFFFF)
-            goto success;
+        {
+            bSuccess = TRUE;
+            break;
+        }
     }
 
-    for (i = 0, cand = active[cl][0];
-         classes[cl].used_num > i && cand->lr_end > reg->lr_end;
-         ++i, cand = active[cl][i])
-        if  (cand->interval->weight != 0x7FFFFFFF)
-            goto success;
+    if  (! bSuccess)
+    {
+        for (i = 0, cand = active[cl][0];
+             classes[cl].used_num > i && cand->lr_end > reg->lr_end;
+             ++i, cand = active[cl][i])
+        {
+            if  (cand->interval->weight != 0x7FFFFFFF)
+            {
+                bSuccess = TRUE;
+                break;
+            }
+        }
+    }
 
-    for (i = 0, cand = active[cl][0];
-         classes[cl].used_num > i;
-         ++i, cand = active[cl][i])
-        if  (cand->interval->weight != 0x7FFFFFFF)
-            goto success;
+    if  (! bSuccess)
+    {
+        if  (reg->interval->weight != 0x7FFFFFFF)
+        {
+            cand = reg;
+        }
+        else
+        {
+            for (i = 0, cand = active[cl][0];
+                 classes[cl].used_num > i;
+                 ++i, cand = active[cl][i])
+            {
+                if  (cand->interval->weight != 0x7FFFFFFF)
+                {
+                    bSuccess = TRUE;
+                    break;
+                }
+            }
+        }
+    }
 
-    cand = reg;
-    goto exit;
+    if (bSuccess)
+    {
+        reg->reg_class = cand->reg_class;
+        reg->hard_num = cand->hard_num;
+        active[cl][i] = reg;
+        bubble_sort (active[cl], classes[cl].used_num);
+    }
 
-success:
-    reg->reg_class = cand->reg_class;
-    reg->hard_num = cand->hard_num;
-    active[cl][i] = reg;
-    bubble_sort (active[cl], classes[cl].used_num);
-
-exit:
     cand->reg_class = 0;
     cand->spill_slot = backend->assign_spill_slot (fn, reg->reg_class);
-    
+
     return cand;
 }
 
@@ -468,7 +483,7 @@ static BOOL linearScan(struct op_reg* ind2reg, int count, control_flow_graph fn,
                      reg->order, reg->lr_begin, reg->lr_end);
             if (reg->reg_class)
             {
-                fprintf (stderr, "$%c%i", reg->reg_class == GENERAL_REGS ? 'r' : 's', reg->hard_num);
+                fprintf (stderr, "$%c%i", reg->reg_class == 1 ? 'r' : 's', reg->hard_num);
             }
             else
             {
@@ -476,7 +491,7 @@ static BOOL linearScan(struct op_reg* ind2reg, int count, control_flow_graph fn,
                          "spill",
                          reg->spill_slot);
             }
-            for (int cl = 0; cl < LIM_REG_CLASSES; cl++)
+            for (int cl = 0; cl < backend->class_count; cl++)
             {
                 BOOL first = TRUE;
                 struct op_reg *r = NULL;
@@ -514,7 +529,7 @@ static BOOL linearScan(struct op_reg* ind2reg, int count, control_flow_graph fn,
             fprintf (stderr, "->");
             if (reg->reg_class)
             {
-                fprintf (stderr, "$%c%i\n", reg->reg_class == GENERAL_REGS ? 'r' : 's', reg->hard_num);
+                fprintf (stderr, "$%c%i\n", reg->reg_class == 1 ? 'r' : 's', reg->hard_num);
             }
             else
             {
@@ -892,8 +907,8 @@ linear_scan_regalloc (control_flow_graph fn, struct avl_table *virtual_regs, str
            )
         {
             fprintf (stderr, "BB %i:\n", (*bb)->index);
-            bitmap_print (stderr, ((BblockArm32)(*bb)->param)->livein, "livein  ", "\n");
-            bitmap_print (stderr, ((BblockArm32)(*bb)->param)->liveout, "liveout ", "\n");
+            bitmap_print (stderr, backend->get_live_in (*bb), "livein  ", "\n");
+            bitmap_print (stderr, backend->get_live_out (*bb), "liveout ", "\n");
         }
     )
 }

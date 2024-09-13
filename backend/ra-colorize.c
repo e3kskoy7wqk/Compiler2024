@@ -1088,32 +1088,6 @@ freeze (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backend)
 }
 # endif /* SIMPLE */
 
-#if 0
-/* 选择最便宜的可能溢出的结点(我们在需要的时候才会真正溢出)。  */
-static void
-select_spill (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backend)
-{
-    unsigned i;
-    bitmap_iterator bi;
-    int selected_reg = bitmap_first_set_bit (g->web_lists[SPILL]);
-    int a = bitmap_first_set_bit (g->web_lists[SPILL]);
-
-    /* 选择活跃区间最长的寄存器溢出。  */
-    for (bmp_iter_set_init (&bi, g->web_lists[SPILL], 0, &i);
-         bmp_iter_set (&bi, &i);
-         bmp_iter_next (&bi, &i))
-        if  (calc_to (GetVex (g, a)->interval) - GetVex (g, a)->interval->_first->_from < calc_to (GetVex (g, i)->interval) - GetVex (g, i)->interval->_first->_from)
-            a = i;
-
-    bitmap_clear_bit (g->web_lists[SPILL], a);
-    bitmap_set_bit (g->web_lists[SIMPLIFY], a);
-# if !defined(SIMPLE)
-    freeze_moves (g, a, classes, backend);
-# endif /* SIMPLE */
-}
-#endif
-
-#if 1
 /* 选择最便宜的可能溢出的结点(我们在需要的时候才会真正溢出)。  */
 static void
 select_spill (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backend)
@@ -1146,7 +1120,6 @@ select_spill (PhaseIFG *g, struct reg_class_desc *classes, struct Backend* backe
     freeze_moves (g, selected_reg, classes, backend);
 # endif /* SIMPLE */
 }
-#endif
 
 /* 将颜色分配给select栈上的所有节点。并更新合并后的网络的颜色。  */
 static void
