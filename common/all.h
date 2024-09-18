@@ -705,6 +705,8 @@ struct IRInst {
 
     int line;
     int column;
+
+    void* param;
 };
 
 struct InterCode
@@ -806,6 +808,8 @@ struct varpool_node
     int uid;
     bitmap     _defines;
     bitmap _uses;
+    int dcount;
+    int ucount;
 
     void* param;
 };
@@ -1709,7 +1713,6 @@ varpool_node varpool_node_set_find (varpool_node_set set, int id);
 varpool_node varpool_node_set_add (varpool_node_set set, ssa_name node);
 varpool_node varpool_get_node (varpool_node_set set, ssa_name decl);
 int compare_varpool_node( varpool_node a, varpool_node b, void *no_backend );
-void varpool_node_set_update (control_flow_graph cfun, varpool_node_set set, BOOL no_backend);
 
 
 /* procs in loop.c */

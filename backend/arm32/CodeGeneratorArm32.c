@@ -379,6 +379,7 @@ backend_init (InterCode code, struct Backend* backend)
             ((struct BblockArm32 *)(*bb)->param)->code = List_Create();
             ((struct BblockArm32 *)(*bb)->param)->livein = BITMAP_XMALLOC ();
             ((struct BblockArm32 *)(*bb)->param)->liveout = BITMAP_XMALLOC ();
+            ((struct BblockArm32 *)(*bb)->param)->D = BITMAP_XMALLOC ();
         }
     }
 
@@ -413,6 +414,7 @@ backend_finalize (InterCode code, struct Backend* backend)
             List_Destroy (&((struct BblockArm32 *)(*bb)->param)->code);
             BITMAP_XFREE (((struct BblockArm32 *)(*bb)->param)->livein);
             BITMAP_XFREE (((struct BblockArm32 *)(*bb)->param)->liveout);
+            BITMAP_XFREE (((struct BblockArm32 *)(*bb)->param)->D);
             free ((*bb)->param);
             (*bb)->param = NULL;
         }
@@ -764,8 +766,8 @@ BOOL CodeGeneratorArm32(InterCode code, SymTab stab, const char *name, FILE *fil
             goto fail;
 
         /* 寄存器分配。  */
-        ra_colorize_graph (*func, virtual_regs, backend);
-/*      LinearScanAllocator (*func, virtual_regs, backend); */
+/*      ra_colorize_graph (*func, virtual_regs, backend); */
+        LinearScanAllocator (*func, virtual_regs, backend);
 
         if  (comp->cmpConfig.optimize)
             if_convertArm32 (*func);

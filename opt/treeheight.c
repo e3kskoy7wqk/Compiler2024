@@ -233,11 +233,7 @@ FindRoots (SymTab stab, basic_block block, varpool_node_set set)
        )
     {
         if  (get_priority ((*instr)->opcode) == -1 ||
-#if 0
-             0)
-#else
              IRInstGetOperand (*instr, 0)->var->sdType->tdTypeKind == TYP_FLOAT)
-#endif
         {
             if  (begin != NULL &&
                  begin != end)

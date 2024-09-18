@@ -103,6 +103,9 @@ Notes:
    The "reg parm save area" can be eliminated completely if we created our
    own va-arc.h, but that has tradeoffs as well (so it's not done).  */
 
+// #   define OLD
+
+
 typedef struct
 {
     varpool_node_set set;               /* 中间代码操作数的集合。  */
@@ -138,6 +141,12 @@ struct ConstantPoolCache
     int val;
     enum var_types type;
     NODEPTR_TYPE p;
+};
+
+struct insn_info
+{
+    bitmap leaves;
+    bitmap D;
 };
 
 /* Note: 此枚举需要与arm32.brg中的值保持一致。  */
@@ -181,12 +190,51 @@ compare_tree (NODEPTR_TYPE t1, NODEPTR_TYPE t2)
     return( ret );
 }
 
+static int
+compare_label (NODEPTR_TYPE *t1, NODEPTR_TYPE *t2)
+{
+    int ret = 0 ;
+
+    if ( (*t1)->label > (*t2)->label )
+        ret = -1 ;
+    else if ( (*t1)->label < (*t2)->label )
+        ret = 1 ;
+
+    return( ret );
+}
+
 static NODEPTR_TYPE tree(LIST tree_nodes, int op, NODEPTR_TYPE l, NODEPTR_TYPE r)
 {
     static int count = 0;
     NODEPTR_TYPE p = (NODEPTR_TYPE) List_NewLast (tree_nodes, sizeof (*p));
 
     memset (p, 0, sizeof(*p));
+
+    switch (op)
+    {
+    case ADD: case SDIV: case MUL: case SUB: case LDR: case REGISTER:
+    case RSB: case CLZ: case LSR: case MOV: case VMOV: case VMUL:
+    case VADD: case VSUB: case VDIV: case VNEG: case VLDR: case LSL:
+    case ASR: case vcvt_signedToFloatingPoint: case vcvt_floatingPointToSigned:
+        p->goalnt = burmArm32_reg_NT;
+        break;
+
+    case JUMPV: case STR: case CMP: case BL: case LABEL: case BX:
+    case PUSH: case POP: case STRING: case VCMP: case VCMPz: case VMRS:
+    case VSTR: case VPUSH: case VPOP:
+        p->goalnt = 1;
+        break;
+
+    case imm12: case simm8: case CNSTI4: case INDIRI4: case LABELV:
+    case imm16: case imm10: case imm5:
+        p->goalnt = 0;
+        break;
+
+    default:
+        fatal ("internal compiler error");
+        break;
+    }
+
     p->op = op;
     p->kids[0] = l; p->kids[1] = r;
     if  (l)
@@ -422,9 +470,168 @@ static void burmArm32_select(basic_block bb, NODEPTR_TYPE p, int goalnt, struct 
     free (kids);
 }
 
+static BOOL
+is_reassociable_op (NODEPTR_TYPE stmt)
+{
+    if  (stmt->op == ADD &&
+         LEFT_CHILD (stmt)->goalnt == burmArm32_reg_NT &&
+         RIGHT_CHILD (stmt)->goalnt == burmArm32_reg_NT)
+        return TRUE;
+    if  (stmt->op == MUL &&
+         LEFT_CHILD (stmt)->goalnt == burmArm32_reg_NT &&
+         RIGHT_CHILD (stmt)->goalnt == burmArm32_reg_NT)
+        return TRUE;
+    return FALSE;
+}
+
+static BOOL check(NODEPTR_TYPE a, NODEPTR_TYPE b)
+{
+    if  (a->op != b->op)
+        return FALSE;
+    if  ((!!LEFT_CHILD (a)) != (!!LEFT_CHILD (b)))
+        return FALSE;
+    if  (LEFT_CHILD (a) &&
+         LEFT_CHILD (a)->goalnt != LEFT_CHILD (b)->goalnt)
+        return FALSE;
+    if  ((!!RIGHT_CHILD (a)) != (!!RIGHT_CHILD (b)))
+        return FALSE;
+    if  (RIGHT_CHILD (a) &&
+         RIGHT_CHILD (a)->goalnt != RIGHT_CHILD (b)->goalnt)
+        return FALSE;
+    return TRUE;
+}
+
+static void
+exp_label_node (NODEPTR_TYPE stmt)
+{
+    BOOL is_leaf;
+    if      (LEFT_CHILD (stmt) && RIGHT_CHILD (stmt))
+    {
+        is_leaf = !LEFT_CHILD (LEFT_CHILD (stmt)) && !RIGHT_CHILD (LEFT_CHILD (stmt));
+        LEFT_CHILD (stmt)->label += is_leaf;
+        stmt->label = LEFT_CHILD (stmt)->label > RIGHT_CHILD (stmt)->label ? LEFT_CHILD (stmt)->label : RIGHT_CHILD (stmt)->label + (LEFT_CHILD (stmt)->label >= RIGHT_CHILD (stmt)->label);
+    }
+    else if (LEFT_CHILD (stmt))
+    {
+        stmt->label = LEFT_CHILD (stmt)->label;
+    }
+    else
+        fatal ("internal compiler error");
+}
+
+static void
+linearize_expr_tree (NODEPTR_TYPE stmt, PINTERNAL_DATA pmydata)
+{
+    LIST S;
+    NODEPTR_TYPE oe;
+    LIST lst;
+    int num_leaves;
+    NODEPTR_TYPE *leaves = NULL;
+    NODEPTR_TYPE *curs;
+    int i;
+    NODEPTR_TYPE s1;
+    NODEPTR_TYPE s2;
+    NODEPTR_TYPE new_node;
+
+    /* 叶子结点。  */
+    if  (!LEFT_CHILD (stmt) &&
+         !RIGHT_CHILD (stmt))
+    {
+        stmt->label = 0;
+        return;
+    }
+
+    /* 不能重结合的结点类型。  */
+    if  (!is_reassociable_op (stmt))
+    {
+        if  (LEFT_CHILD (stmt))
+            linearize_expr_tree (LEFT_CHILD (stmt), pmydata);
+        if  (RIGHT_CHILD (stmt))
+            linearize_expr_tree (RIGHT_CHILD (stmt), pmydata);
+        exp_label_node (stmt);
+        return;
+    }
+
+    oe = stmt;
+    lst = List_Create ();
+
+    S = List_Create ();
+    while(stmt||!List_IsEmpty(S))
+    {
+        if(stmt)
+        {   /* 根指针进栈,遍历左子树 */
+            *(NODEPTR_TYPE *) List_NewFirst (S, sizeof (NODEPTR_TYPE)) = stmt;
+            stmt = check (stmt, oe) ? LEFT_CHILD (stmt) : NULL;
+        }
+        else
+        {   /* 根指针退栈,访问根结点,遍历右子树 */
+            stmt = *(NODEPTR_TYPE *) List_First (S);
+            List_DeleteFirst (S);
+            if  (!check (stmt, oe))
+            {
+                linearize_expr_tree (stmt, pmydata);
+                *(NODEPTR_TYPE *) List_NewLast (lst, sizeof (NODEPTR_TYPE)) = stmt;
+            }
+            stmt = check (stmt, oe) ? RIGHT_CHILD (stmt) : NULL;
+        }
+    }
+    List_Destroy (&S);
+
+    num_leaves = List_Card (lst);
+    leaves = (NODEPTR_TYPE *) xmalloc (num_leaves * sizeof (NODEPTR_TYPE));
+    for(  curs=(NODEPTR_TYPE *) List_First(lst), i = 0
+       ;  curs!=NULL
+       ;  curs = (NODEPTR_TYPE *) List_Next((void *)curs), i++
+       )
+    {
+        (*curs)->ref_counter = (*curs)->ref_counter - 1;
+        leaves[i] = *curs;
+    }
+    List_Destroy (&lst);
+
+    qsort( (void *)leaves, (size_t)num_leaves, sizeof( NODEPTR_TYPE ), (int (* )(const void *, const void *))compare_label );
+    while (num_leaves)
+    {
+        s1 = leaves[0];
+        leaves[0] = leaves[--num_leaves];
+        s2 = leaves[1];
+        leaves[1] = leaves[--num_leaves];
+
+        if  (num_leaves)
+        {
+            new_node = tree (pmydata->tree_nodes, oe->op, s1, s2);
+            new_node->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, -1, oe->operand.vreg->rclass);
+        }
+        else
+        {
+            new_node = oe;
+            LEFT_CHILD (new_node) = s1;
+            s1->ref_counter++;
+            RIGHT_CHILD (new_node) = s2;
+            s2->ref_counter++;
+        }
+
+        exp_label_node (new_node);
+
+        if  (num_leaves)
+        {
+            leaves[num_leaves++] = new_node;
+            qsort( (void *)leaves, (size_t)num_leaves, sizeof( NODEPTR_TYPE ), (int (* )(const void *, const void *))compare_label );
+        }
+    }
+
+    free (leaves);
+}
+
 static void commit (basic_block block, NODEPTR_TYPE p, int goalnt, PINTERNAL_DATA pmydata)
 {
-    PTREEINFO pti = (PTREEINFO) List_NewLast (pmydata->trees, sizeof (TREEINFO));
+    PTREEINFO pti;
+
+# if !defined(OLD)
+    linearize_expr_tree (p, pmydata);
+# endif /* OLD */
+
+    pti = (PTREEINFO) List_NewLast (pmydata->trees, sizeof (TREEINFO));
     pti->goalnt = goalnt;
     pti->p = p;
     pti->block = block;
@@ -1013,36 +1220,68 @@ GetTreeNode (varpool_node vnode, PINTERNAL_DATA pmydata)
     return p;
 }
 
-/* 对于同一基本块中的中间指令insn1、insn2，判断insn2是否在insn1之后.  */
-static BOOL is_after(IRInst insn1, IRInst insn2) 
-{
-    IRInst *curs;
-    for(  curs=InterCodeGetCursor (insn1->bb->cfg->code, insn1)
-       ;  curs!=NULL
-       ;  curs = (IRInst *) List_Next((void *)curs)
-       )
-        if  (insn2 == *curs)
-            return TRUE;
-    return FALSE;
-}
-
-/* 中间指令的源操作数是否都只被定值了一次.  */
-static BOOL
-define_once (varpool_node_set set, IRInst inst)
+static BOOL check_paths(IRInst s, IRInst d, varpool_node_set set)
 {
     int i;
-    varpool_node vnode;
+    BOOL bResult = FALSE;
+    bitmap_iterator bi;
+    unsigned bit_no;
+    int num_leaves = (int) bitmap_count_bits (((struct insn_info *) s->param)->leaves);
+    varpool_node *leaves = NULL;
+    basic_block block;
+    IRInst insn;
 
-    for (i = IRInstGetNumOperands (inst) - 1; i >= 0; i--)
+    if  (s == d)
+        return TRUE;
+
+    leaves = (varpool_node *) xmalloc (num_leaves * sizeof(varpool_node));
+    for (bmp_iter_set_init (&bi, ((struct insn_info *) s->param)->leaves, 0, &bit_no), i = 0;
+         bmp_iter_set (&bi, &bit_no);
+         bmp_iter_next (&bi, &bit_no), i++)
+        leaves[i] = varpool_node_set_find (set, bit_no);
+
+    if  (s->bb == d->bb)
     {
-        if  (! IRInstIsOutput (inst, i))
+        for (i = 0; i < num_leaves; i++)
         {
-            vnode = varpool_get_node (set, IRInstGetOperand (inst, i));
-            if  (bitmap_count_bits (vnode->_defines) > 1)
-                return FALSE;
+            for (bmp_iter_set_init (&bi, leaves[i]->_defines, 0, &bit_no);
+                 bmp_iter_set (&bi, &bit_no);
+                 bmp_iter_next (&bi, &bit_no))
+            {
+                insn = InterCodeGetInstByID (s->bb->cfg->code, bit_no);
+                if  (bitmap_bit_p (((struct insn_info *) s->param)->D, insn->uid) &&
+                     bitmap_bit_p (((struct insn_info *) insn->param)->D, d->uid))
+                    goto exit;
+            }
         }
     }
-    return TRUE;
+    else
+    {
+        for (i = 0; i < num_leaves; i++)
+        {
+            for (bmp_iter_set_init (&bi, leaves[i]->_defines, 0, &bit_no);
+                 bmp_iter_set (&bi, &bit_no);
+                 bmp_iter_next (&bi, &bit_no))
+            {
+                insn = InterCodeGetInstByID (s->bb->cfg->code, bit_no);
+                block = insn->bb;
+                if  (bitmap_bit_p (((struct insn_info *) s->param)->D, insn->uid) ||
+                     bitmap_bit_p (((struct insn_info *) insn->param)->D, d->uid))
+                    goto exit;
+                if  (block != s->bb &&
+                     block != d->bb &&
+                     bitmap_bit_p (((struct BblockArm32 *) s->bb->param)->D, block->index) &&
+                     bitmap_bit_p (((struct BblockArm32 *) block->param)->D, d->bb->index))
+                    goto exit;
+            }
+        }
+    }
+
+    bResult = TRUE;
+exit:
+    free (leaves);
+
+    return bResult;
 }
 
 static NODEPTR_TYPE
@@ -1055,32 +1294,46 @@ handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_t vreg, PINTERN
     bitmap_iterator bi;
     unsigned insn_index;
     IRInst target;
+    IRInst target_insn = NULL;
+
+    /* 将指令自身的操作数加入指令的叶子结点。  */
+    for (i = IRInstGetNumOperands (inst) - 1; i >= 0; i--)
+        if  (!IRInstIsOutput (inst, i))
+            bitmap_set_bit (((struct insn_info *) inst->param)->leaves, varpool_get_node (set, IRInstGetOperand (inst, i))->uid);
 
     for (i = IRInstGetNumOperands (inst) - 1; i >= 0; i--)
     {
         vnode = varpool_get_node (set, IRInstGetOperand (inst, i));
         if  (IRInstIsOutput (inst, i) &&
              /* 不止一处使用。  */
-             (bitmap_count_bits (vnode->_uses) > 1 ||
+             (vnode->ucount > 1 ||
              /* 多次定值。  */
-             bitmap_count_bits (vnode->_defines) > 1))
+             vnode->dcount > 1))
         {
             delay = FALSE;
             break;
         }
 
+        if  (IRInstIsOutput (inst, i) &&
+             !bitmap_empty_p (vnode->_uses))
+            target_insn = InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->_uses));
+
         /* 不在同一个循环内使用。  */
         if  (IRInstIsOutput (inst, i) &&
              !bitmap_empty_p (vnode->_uses) &&
-             (InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->_uses))->bb->loop_father != inst->bb->loop_father ||
-             ! define_once (set, inst)))
+# if !defined(OLD)
+             (target_insn->bb->loop_father != inst->bb->loop_father ||
+             ! check_paths (inst, target_insn, set)))
+# else  /* !OLD */
+             target_insn->bb != inst->bb)
+# endif /* OLD */
         {
             delay = FALSE;
             break;
         }
 
         if  (! IRInstIsOutput (inst, i) &&
-             bitmap_count_bits (vnode->_defines) > 1 &&
+             vnode->dcount > 1 &&
              vnode->var->sdSymKind == SYM_VAR &&
              ! vnode->var->sdVar.sdvConst &&
              vnode->var->sdType->tdTypeKind <= TYP_lastIntrins)
@@ -1092,7 +1345,7 @@ handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_t vreg, PINTERN
             {
                 target = InterCodeGetInstByID (inst->bb->cfg->code, insn_index);
                 if  (target->bb == inst->bb &&
-                     is_after (inst, target))
+                     bitmap_bit_p (((struct insn_info *) inst->param)->D, target->uid))
                 {
                     delay = FALSE;
                     break;
@@ -1113,20 +1366,25 @@ handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_t vreg, PINTERN
              ! vnode->var->sdVar.sdvConst &&
              vnode->var->sdType->tdTypeKind <= TYP_lastIntrins &&
              ! IRInstIsOutput (inst, i) &&
-             bitmap_count_bits (vnode->_defines) == 1 &&
+             vnode->dcount == 1 &&
              ! bitmap_bit_p (inst->bb->dom[0], InterCodeGetInstByID (inst->bb->cfg->code, bitmap_first_set_bit (vnode->_defines))->bb->index))
             warning (comp->cmpConfig.input_file_name, inst->line, "%s may be used uninitialized in this function", stGetSymName (vnode->var));
     }
 
     if  (delay)
     {
+        /* 将要移动的指令的操作数加入移动到指令的叶子结点当中。  */
+        if  (target_insn)
+            bitmap_ior_into (((struct insn_info *) target_insn->param)->leaves, ((struct insn_info *) inst->param)->leaves);
+
+        /* 连接叶子结点。  */
         old_node = avl_find (pmydata->node_map, p);
         if  (old_node)
         {
-            LEFT_CHILD(old_node) = LEFT_CHILD(p);
-            RIGHT_CHILD(old_node) = RIGHT_CHILD(p);
+            LEFT_CHILD (old_node) = LEFT_CHILD (p);
+            RIGHT_CHILD (old_node) = RIGHT_CHILD (p);
             old_node->op = p->op;
-            LEFT_CHILD(p) = RIGHT_CHILD(p) = NULL;
+            LEFT_CHILD (p) = RIGHT_CHILD (p) = NULL;
             p = old_node;
         }
     }
@@ -1396,9 +1654,6 @@ static BOOL translate_load (IRInst inst, PINTERNAL_DATA pmydata)
     varpool_node src, dest;
     NODEPTR_TYPE p = NULL;
 
-    if  (pmydata->ddata)
-        dwarfout_line (inst, pmydata);
-
     /* 获得目标操作数所在寄存器。  */
     dest = varpool_get_node (pmydata->set, IRInstGetOperand (inst, 0));
     dest_reg = get_registerArm32(dest, NULL, dest->var->sdType->tdTypeKind == TYP_FLOAT ? VFP_REGS : GENERAL_REGS, FALSE);
@@ -1416,6 +1671,10 @@ static BOOL translate_load (IRInst inst, PINTERNAL_DATA pmydata)
         p = GetTreeNode (src, pmydata);
         src_reg = p->operand.vreg;
     }
+
+    if  (pmydata->ddata &&
+         ! src->var->sdVar.sdvConst)
+        dwarfout_line (inst, pmydata);
 
     if  (p &&
          ! is_global_var (src->var) &&
@@ -1444,11 +1703,9 @@ static BOOL translate_load (IRInst inst, PINTERNAL_DATA pmydata)
     else
         fatal("internal compiler error");
 
-    /* 需要立刻提交指令选择，因为它并不是静态单赋值形式的。  */
-    commit (inst->bb, p, burmArm32_reg_NT, pmydata);
-    p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
-    p->operand.vreg = dest_reg;
+    p = handler (pmydata->set, inst, p, dest_reg, pmydata);
     setreg (dest, p, pmydata);
+
     return TRUE;
 }
 static BOOL translate_aload (IRInst inst, PINTERNAL_DATA pmydata) 
@@ -1510,10 +1767,7 @@ static BOOL translate_aload (IRInst inst, PINTERNAL_DATA pmydata)
         p = load_base (inst->bb, dest_reg, stGetBaseType(base->var->sdType)->tdTypeKind, p, base->sdvOffset + GetConstVal(offset->var, 0)->cvValue.cvIval, pmydata);
     }
 
-    /* 需要立刻提交指令选择，因为它并不是静态单赋值形式的。  */
-    commit (inst->bb, p, burmArm32_reg_NT, pmydata);
-    p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
-    p->operand.vreg = dest_reg;
+    p = handler (pmydata->set, inst, p, dest_reg, pmydata);
     setreg (dest, p, pmydata);
 
     return TRUE;
@@ -1783,12 +2037,21 @@ static BOOL translate_rem (IRInst inst, PINTERNAL_DATA pmydata)
     {
         left = GetTreeNode (arg1, pmydata);
     }
+    commit (inst->bb, left, burmArm32_reg_NT, pmydata);
+    p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
+    p->operand.vreg = left->operand.vreg;
+    left = p;
+
     right = arg2->var->sdVar.sdvConst ? load_immediate(inst->bb, NULL, GetConstVal(arg2->var, 0)->cvValue.cvIval, arg2->var->sdType->tdTypeKind, pmydata)
                                                  : getreg (arg2, pmydata->reg_map);
     if  (!right)
     {
         right = GetTreeNode (arg2, pmydata);
     }
+    commit (inst->bb, right, burmArm32_reg_NT, pmydata);
+    p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
+    p->operand.vreg = right->operand.vreg;
+    right = p;
 
     p = tree (pmydata->tree_nodes, SDIV, left, right);
     p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, -1, GENERAL_REGS);
@@ -3011,6 +3274,100 @@ if_convertArm32 (control_flow_graph func)
     List_Destroy(&blocks);
 }
 
+#if 0
+static void ShortestPath_FLOYD(control_flow_graph G)
+{   /* 用Floyd算法求有向网G中各对顶点v和w之间的最短路径P[v][w]及其 */
+    /* 带权长度D[v][w]。若P[v][w][u]为TRUE,则u是从v到w当前求得最短 */
+    /* 路径上的顶点。算法7.16 */
+    basic_block *u, *v, *w;
+    edge *ei;
+
+    for(  u=(basic_block *) List_First(G->basic_block_info)
+       ;  u!=NULL
+       ;  u = (basic_block *) List_Next((void *)u)
+       )
+    {
+        for(  ei=(edge *) List_First((*u)->succs)
+           ;  ei!=NULL
+           ;  ei = (edge *) List_Next((void *)ei)
+           )
+        {
+            bitmap_set_bit (((struct BblockArm32 *) (*u)->param)->D, (*ei)->dest->index);
+        }
+    }
+
+    for(  u=(basic_block *) List_First(G->basic_block_info)
+       ;  u!=NULL
+       ;  u = (basic_block *) List_Next((void *)u)
+       )
+    {
+        for(  v=(basic_block *) List_First(G->basic_block_info)
+           ;  v!=NULL
+           ;  v = (basic_block *) List_Next((void *)v)
+           )
+        {
+            for(  w=(basic_block *) List_First(G->basic_block_info)
+               ;  w!=NULL
+               ;  w = (basic_block *) List_Next((void *)w)
+               )
+            {
+                if  (bitmap_bit_p (((struct BblockArm32 *) (*v)->param)->D, (*u)->index) &&
+                     bitmap_bit_p (((struct BblockArm32 *) (*u)->param)->D, (*w)->index))
+                {
+                    bitmap_set_bit (((struct BblockArm32 *) (*v)->param)->D, (*w)->index);
+                }
+            }
+        }
+    }
+}
+#else
+static void BFSTraverse(control_flow_graph G, basic_block v)
+{   /* 初始条件: 有向图G存在,Visit是顶点的应用函数。算法7.6 */
+    /* 操作结果: 从第1个顶点起,按广度优先非递归遍历有向图G,并对每个顶点调用 */
+    /*           函数Visit一次且仅一次。一旦Visit()失败,则操作失败。 */
+    /*           使用辅助队列Q和访问标志数组visited */
+    basic_block u;
+    LIST Q;
+    bitmap visited; /* 访问标志数组 */
+    edge *ei;
+    visited = BITMAP_XMALLOC ();
+    Q = List_Create ();
+    bitmap_set_bit (visited, v->index);
+    *(basic_block *) List_NewLast(Q, sizeof (basic_block)) = v;
+    while(!List_IsEmpty (Q))
+    {
+        u = *(basic_block *) List_First (Q);
+        List_DeleteFirst (Q);
+        for(  ei=(edge *) List_First(u->succs)
+           ;  ei!=NULL
+           ;  ei = (edge *) List_Next((void *)ei)
+           )
+            if  (! bitmap_bit_p (visited, (*ei)->dest->index))
+            {
+                bitmap_set_bit (visited, (*ei)->dest->index);
+                bitmap_set_bit (((struct BblockArm32 *) v->param)->D, (*ei)->dest->index);
+                *(basic_block *) List_NewLast(Q, sizeof (basic_block)) = (*ei)->dest;
+            }
+    }
+    List_Destroy (&Q);
+    BITMAP_XFREE (visited);
+}
+static void ShortestPath_FLOYD(control_flow_graph G)
+{   /* 用Floyd算法求有向网G中各对顶点v和w之间的最短路径P[v][w]及其 */
+    /* 带权长度D[v][w]。若P[v][w][u]为TRUE,则u是从v到w当前求得最短 */
+    /* 路径上的顶点。算法7.16 */
+    basic_block *u;
+
+    for(  u=(basic_block *) List_First(G->basic_block_info)
+       ;  u!=NULL
+       ;  u = (basic_block *) List_Next((void *)u)
+       )
+    {
+        BFSTraverse (G, *u);
+    }
+}
+#endif
+
 BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab stab, struct avl_table *virtual_regs, struct Backend* backend, struct dwarf_data *ddata) 
 {
     BOOL bSuccess = FALSE;
@@ -3018,8 +3375,9 @@ BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab st
     basic_block *block;
     LIST blocks;
     NODEPTR_TYPE label;
-    IRInst *instr;
     PTREEINFO pti;
+    IRInst *insn;
+    IRInst *next_insn;
 
     /* 初始化内存池，供iburg产生的程序使用。  */
     mempool = List_Create ();
@@ -3041,9 +3399,48 @@ BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab st
     pmydata->backend = backend;
 
     flow_loops_find (func);
+# if !defined(OLD)
+    ShortestPath_FLOYD (func);
+# endif /* OLD */
 
     blocks = List_Create ();
     pre_and_rev_post_order_compute (func, NULL, blocks, TRUE, FALSE);
+
+    /* 初始化指令的参数。  */
+    for(  block=(basic_block *) List_First(blocks)
+       ;  block!=NULL
+       ;  block = (basic_block *) List_Next((void *)block)
+       )
+    {
+        for(  insn=(IRInst *) List_First((*block)->insns)
+           ;  insn!=NULL
+           ;  insn = (IRInst *) List_Next((void *)insn)
+           )
+        {
+            (*insn)->param = (char *) xmalloc (sizeof (struct insn_info));
+            ((struct insn_info *) (*insn)->param)->D = BITMAP_XMALLOC ();
+            ((struct insn_info *) (*insn)->param)->leaves = BITMAP_XMALLOC ();
+        }
+    }
+
+    for(  block=(basic_block *) List_First(blocks)
+       ;  block!=NULL
+       ;  block = (basic_block *) List_Next((void *)block)
+       )
+    {
+        for(  insn=(IRInst *) List_Last((*block)->insns), next_insn = NULL
+           ;  insn!=NULL
+           ;  insn = (IRInst *) List_Prev((void *)insn)
+           )
+        {
+            if  (next_insn)
+            {
+                bitmap_copy (((struct insn_info *) (*insn)->param)->D, ((struct insn_info *) (*next_insn)->param)->D);
+                bitmap_set_bit (((struct insn_info *) (*insn)->param)->D, (*next_insn)->uid);
+            }
+            next_insn = insn;
+        }
+    }
 
     for(  block=(basic_block *) List_First(blocks)
        ;  block!=NULL
@@ -3064,12 +3461,31 @@ BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab st
         List_Clear (pmydata->_constants);
 
         /* 翻译每条指令。  */
-        for(  instr=(IRInst *) List_First((*block)->insns)
-           ;  instr!=NULL
-           ;  instr = (IRInst *) List_Next((void *)instr)
+        for(  insn=(IRInst *) List_First((*block)->insns)
+           ;  insn!=NULL
+           ;  insn = (IRInst *) List_Next((void *)insn)
            )
-            if  (!translate (*instr, pmydata))
+        {
+            if  (!translate (*insn, pmydata))
                 goto fail;
+        }
+    }
+
+    for(  block=(basic_block *) List_First(blocks)
+       ;  block!=NULL
+       ;  block = (basic_block *) List_Next((void *)block)
+       )
+    {
+        for(  insn=(IRInst *) List_First((*block)->insns)
+           ;  insn!=NULL
+           ;  insn = (IRInst *) List_Next((void *)insn)
+           )
+        {
+            BITMAP_XFREE (((struct insn_info *) (*insn)->param)->D);
+            BITMAP_XFREE (((struct insn_info *) (*insn)->param)->leaves);
+            free ((*insn)->param);
+            (*insn)->param = NULL;
+        }
     }
 
     /* 指令选择，同时处理有向无环图的情况。  */

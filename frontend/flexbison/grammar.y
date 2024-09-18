@@ -28,7 +28,7 @@ Tree g_savedTree;
 
   static int nCount = 0; /* 规约次数  */
 
-  // helper macro for short definition of trace-output inside code
+  /* helper macro for short definition of trace-output inside code  */
   #define TRACE_PARSER(code)       \
     if (1) {       \
       code;                                    \

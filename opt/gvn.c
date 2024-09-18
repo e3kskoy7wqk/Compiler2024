@@ -460,22 +460,12 @@ find (OLGraph *G, struct Expression* entry)
 static int
 find_insert (OLGraph *G, IRInst x, varpool_node_set set)
 {
-    struct ssa_name tmp = {0};
+    
     int retval;
     varpool_node a1;
     varpool_node a2;
     struct Expression* entry;
     int *curs;
-
-    /* 交换运算。  */
-    if  ((x->opcode == IRINST_OP_add ||
-         x->opcode == IRINST_OP_mul) &&
-         ((struct variable_info *) varpool_get_node (set, IRInstGetOperand (x, 1)))->v < ((struct variable_info *) varpool_get_node (set, IRInstGetOperand (x, 2)))->v)
-    {
-        memcpy (&tmp, IRInstGetOperand (x, 1), sizeof (tmp));
-        memcpy (IRInstGetOperand (x, 1), IRInstGetOperand (x, 2), sizeof (tmp));
-        memcpy (IRInstGetOperand (x, 2), &tmp, sizeof (tmp));
-    }
 
     /* 处理代数恒等式。  */
     switch (x->opcode)
@@ -496,6 +486,12 @@ find_insert (OLGraph *G, IRInst x, varpool_node_set set)
             if  (((struct variable_info *)a2->param)->v == zero)
             {
                 retval = ((struct variable_info *)a1->param)->v;
+                break;
+            }
+
+            if  (((struct variable_info *)a1->param)->v == zero)
+            {
+                retval = ((struct variable_info *)a2->param)->v;
                 break;
             }
 
@@ -540,7 +536,14 @@ find_insert (OLGraph *G, IRInst x, varpool_node_set set)
                 break;
             }
 
-            if  (((struct variable_info *)a2->param)->v == zero)
+            if  (((struct variable_info *)a1->param)->v == one)
+            {
+                retval = ((struct variable_info *)a2->param)->v;
+                break;
+            }
+
+            if  (((struct variable_info *)a1->param)->v == zero ||
+                 ((struct variable_info *)a2->param)->v == zero)
             {
                 retval = zero;
                 break;

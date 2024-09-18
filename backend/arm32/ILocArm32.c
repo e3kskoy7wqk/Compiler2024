@@ -801,15 +801,20 @@ outputArmInst (ArmInst inst, FILE *file)
 static BOOL
 isNopCopy (ArmInst instr)
 {
-    BOOL retval;
     if  ((instr->lir. opcode == ARMINST_OP_MOV_reg ||
          instr->lir.opcode == ARMINST_OP_VMOV) &&
          ArmInst_get_as_Register (instr, 0)->hard_num == ArmInst_get_as_Register (instr, 1)->hard_num &&
          ArmInst_get_as_Register (instr, 0)->hard_num != -1)
-        retval = TRUE;
-    else
-        retval = FALSE;
-    return retval;
+        return TRUE;
+
+    if  ((instr->lir. opcode == ARMINST_OP_ADD_imm ||
+         instr->lir.opcode == ARMINST_OP_SUB_imm) &&
+         ArmInst_get_operand (instr, 2)->cval.cvValue.cvIval == 0 &&
+         ArmInst_get_as_Register (instr, 0)->hard_num == ArmInst_get_as_Register (instr, 1)->hard_num &&
+         ArmInst_get_as_Register (instr, 0)->hard_num != -1)
+        return TRUE;
+
+    return FALSE;
 }
 
 BOOL

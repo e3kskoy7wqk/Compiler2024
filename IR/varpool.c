@@ -45,38 +45,15 @@ varpool_get_node (varpool_node_set set, ssa_name decl)
     return (varpool_node) avl_find (set->nodes, &vnode);
 }
 
-void varpool_node_set_update (control_flow_graph cfun, varpool_node_set set, BOOL no_backend)
-{
-    basic_block *bb;
-    IRInst *Cursor;
-    int i, count;
-    varpool_node vnode;
-
-    for(  bb=(basic_block *)List_First(cfun->basic_block_info)
-        ;  bb!=NULL
-        ;  bb = (basic_block *)List_Next((void *)bb)
-        )
-    {
-        for(  Cursor=(IRInst *)List_First((*bb)->insns)
-            ;  Cursor!=NULL
-            ;  Cursor = (IRInst *)List_Next((void *)Cursor)
-            )
-        {
-            count = IRInstGetNumOperands(*Cursor);
-            for (i = 0; i < count; ++i)
-            {
-                vnode = varpool_node_set_add(set, IRInstGetOperand (*Cursor, i));
-                bitmap_set_bit(IRInstIsOutput(*Cursor, i) ? vnode->_defines : vnode->_uses, (*Cursor)->uid);
-            }
-        }
-    }
-}
-
 /* Create a new varpool.  */
 varpool_node_set
 varpool_node_set_new (control_flow_graph cfun, BOOL no_backend)
 {   
     varpool_node_set set;
+    basic_block *bb;
+    IRInst *Cursor;
+    int i, count;
+    varpool_node vnode;
 
     set = (varpool_node_set) xmalloc (sizeof (*set));
     memset (set, '\0', sizeof (*set));
@@ -85,7 +62,33 @@ varpool_node_set_new (control_flow_graph cfun, BOOL no_backend)
 
     if  (cfun)
     {
-        varpool_node_set_update (cfun, set, no_backend);
+        for(  bb=(basic_block *)List_First(cfun->basic_block_info)
+           ;  bb!=NULL
+           ;  bb = (basic_block *)List_Next((void *)bb)
+           )
+        {
+            for(  Cursor=(IRInst *)List_First((*bb)->insns)
+               ;  Cursor!=NULL
+               ;  Cursor = (IRInst *)List_Next((void *)Cursor)
+               )
+            {
+                count = IRInstGetNumOperands(*Cursor);
+                for (i = 0; i < count; ++i)
+                {
+                    vnode = varpool_node_set_add (set, IRInstGetOperand (*Cursor, i));
+                    if  (IRInstIsOutput (*Cursor, i))
+                    {
+                        bitmap_set_bit (vnode->_defines, (*Cursor)->uid);
+                        vnode->dcount++;
+                    }
+                    else
+                    {
+                        bitmap_set_bit (vnode->_uses, (*Cursor)->uid);
+                        vnode->ucount++;
+                    }
+                }
+            }
+        }
     }
 
     return set;

@@ -74,6 +74,7 @@ struct BblockArm32
     LIST code;     /* contains struct ArmInst */
     bitmap liveout, livein;
     basic_block next_block;
+    bitmap D;
 };
 
 /* Note: 需要跟arm32.brg中的值保持一致。  */
@@ -111,6 +112,8 @@ struct tree {
     int ref_counter;
     union LIR_Opr operand;
     Condition condition;
+    int goalnt;
+    int label;
 } ;
 
 struct ArmInst {
