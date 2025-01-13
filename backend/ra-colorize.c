@@ -444,7 +444,7 @@ static void CreateDG(PhaseIFG *G)
 # endif /* SIMPLE */
 }
 
-void DestroyGraph(PhaseIFG *G)
+static void DestroyGraph(PhaseIFG *G)
 {   /* 初始条件: 有向图G存在 */
     /* 操作结果: 销毁有向图G */
     int j;

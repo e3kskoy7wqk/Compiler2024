@@ -43,7 +43,16 @@ typedef struct tree MR NODEPTR_TYPE;
 
 #define UNITS_PER_WORD  4
 
-#define STATE_TYPE void*
+struct burm_state {
+	int op;
+	struct burm_state *left, *right;
+	short cost[3];
+	struct {
+		unsigned burm_stm:5;
+		unsigned burm_reg:6;
+	} rule;
+};
+#define STATE_TYPE struct burm_state*
 #define OP_LABEL(p) ((p)->op)
 #define LEFT_CHILD(p) ((p)->kids[0])
 #define RIGHT_CHILD(p) ((p)->kids[1])
@@ -114,6 +123,7 @@ struct tree {
     Condition condition;
     int goalnt;
     int label;
+    BOOL dp;
 } ;
 
 struct ArmInst {

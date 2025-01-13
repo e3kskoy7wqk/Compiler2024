@@ -103,8 +103,11 @@ Notes:
    The "reg parm save area" can be eliminated completely if we created our
    own va-arc.h, but that has tradeoffs as well (so it's not done).  */
 
-// #   define OLD
-
+#   define TC
+#   define SU
+// #   define SEQ
+// #   define Greedy
+// #   define SPLIT
 
 typedef struct
 {
@@ -126,6 +129,7 @@ typedef struct tagTREEINFO
     NODEPTR_TYPE p;
     int goalnt;
     basic_block block;
+    bitmap liveness, next_liveness;
 }
 TREEINFO, *PTREEINFO;
 
@@ -212,22 +216,30 @@ static NODEPTR_TYPE tree(LIST tree_nodes, int op, NODEPTR_TYPE l, NODEPTR_TYPE r
 
     switch (op)
     {
-    case ADD: case SDIV: case MUL: case SUB: case LDR: case REGISTER:
+    case ADD: case SDIV: case MUL: case SUB: case LDR:
     case RSB: case CLZ: case LSR: case MOV: case VMOV: case VMUL:
     case VADD: case VSUB: case VDIV: case VNEG: case VLDR: case LSL:
     case ASR: case vcvt_signedToFloatingPoint: case vcvt_floatingPointToSigned:
         p->goalnt = burmArm32_reg_NT;
+        p->dp = FALSE;
+        break;
+
+    case REGISTER:
+        p->goalnt = burmArm32_reg_NT;
+        p->dp = TRUE;
         break;
 
     case JUMPV: case STR: case CMP: case BL: case LABEL: case BX:
     case PUSH: case POP: case STRING: case VCMP: case VCMPz: case VMRS:
     case VSTR: case VPUSH: case VPOP:
         p->goalnt = 1;
+        p->dp = TRUE;
         break;
 
     case imm12: case simm8: case CNSTI4: case INDIRI4: case LABELV:
     case imm16: case imm10: case imm5:
         p->goalnt = 0;
+        p->dp = TRUE;
         break;
 
     default:
@@ -253,6 +265,7 @@ static NODEPTR_TYPE copy_tree(LIST tree_nodes, NODEPTR_TYPE tp)
     p = tree (tree_nodes, tp->op, 
               copy_tree(tree_nodes, tp->kids[0]), 
               copy_tree(tree_nodes, tp->kids[1]));
+    p->dp = tp->dp;
     memcpy (&p->operand, &tp->operand, sizeof (p->operand));
     return p;
 }
@@ -274,7 +287,20 @@ static void dumpCover(NODEPTR_TYPE p, int goalnt, int indent)
         fprintf(stderr, " ");
     fprintf(stderr, "%s\n", burmArm32_string[eruleno]);
 
-    free (kids);
+    free ((void *) kids);
+}
+
+static int exp_label_node1(NODEPTR_TYPE root, int bias) {
+  if (LEFT_CHILD(root) && RIGHT_CHILD(root)) {
+    int l = exp_label_node1(LEFT_CHILD(root),  1);
+    int r = exp_label_node1(RIGHT_CHILD(root), 0);
+    bias = l > r ? l : r + (l >= r);
+  }
+  return root->label = bias;
+}
+
+int exp_label1(NODEPTR_TYPE root) {
+  return exp_label_node1(root, -1);
 }
 
 /* 指令选择。  */
@@ -292,6 +318,15 @@ static void burmArm32_select(basic_block bb, NODEPTR_TYPE p, int goalnt, struct 
     kids = (NODEPTR_TYPE *) xmalloc (sizeof (NODEPTR_TYPE) * 100);
 
     burmArm32_kids(p, eruleno, kids);
+# if defined(SU)
+    if ((!p->dp || p->op == REGISTER))
+    {
+        if (!p->ref_counter)
+            exp_label1 (p);
+        for (i = 0; nts[i]; i++) ;
+        qsort((void *) kids, i, sizeof (NODEPTR_TYPE), (int (* )(void const*, void const*))compare_label);
+    }
+# endif /* SU */
     for (i = 0; nts[i]; i++)
         burmArm32_select(bb, kids[i], nts[i], virtual_regs, backend);
 
@@ -467,7 +502,7 @@ static void burmArm32_select(basic_block bb, NODEPTR_TYPE p, int goalnt, struct 
         break;
     }
 
-    free (kids);
+    free ((void *) kids);
 }
 
 static BOOL
@@ -504,7 +539,7 @@ static BOOL check(NODEPTR_TYPE a, NODEPTR_TYPE b)
 static void
 exp_label_node (NODEPTR_TYPE stmt)
 {
-    BOOL is_leaf;
+    int is_leaf;
     if      (LEFT_CHILD (stmt) && RIGHT_CHILD (stmt))
     {
         is_leaf = !LEFT_CHILD (LEFT_CHILD (stmt)) && !RIGHT_CHILD (LEFT_CHILD (stmt));
@@ -520,7 +555,7 @@ exp_label_node (NODEPTR_TYPE stmt)
 }
 
 static void
-linearize_expr_tree (NODEPTR_TYPE stmt, PINTERNAL_DATA pmydata)
+linearize_expr_tree (NODEPTR_TYPE stmt, bitmap liveness, PINTERNAL_DATA pmydata)
 {
     LIST S;
     NODEPTR_TYPE oe;
@@ -537,7 +572,7 @@ linearize_expr_tree (NODEPTR_TYPE stmt, PINTERNAL_DATA pmydata)
     if  (!LEFT_CHILD (stmt) &&
          !RIGHT_CHILD (stmt))
     {
-        stmt->label = 0;
+        stmt->label = (stmt->op == REGISTER && bitmap_bit_p (liveness, stmt->operand.vreg->vregno));
         return;
     }
 
@@ -545,9 +580,9 @@ linearize_expr_tree (NODEPTR_TYPE stmt, PINTERNAL_DATA pmydata)
     if  (!is_reassociable_op (stmt))
     {
         if  (LEFT_CHILD (stmt))
-            linearize_expr_tree (LEFT_CHILD (stmt), pmydata);
+            linearize_expr_tree (LEFT_CHILD (stmt), liveness, pmydata);
         if  (RIGHT_CHILD (stmt))
-            linearize_expr_tree (RIGHT_CHILD (stmt), pmydata);
+            linearize_expr_tree (RIGHT_CHILD (stmt), liveness, pmydata);
         exp_label_node (stmt);
         return;
     }
@@ -569,7 +604,7 @@ linearize_expr_tree (NODEPTR_TYPE stmt, PINTERNAL_DATA pmydata)
             List_DeleteFirst (S);
             if  (!check (stmt, oe))
             {
-                linearize_expr_tree (stmt, pmydata);
+                linearize_expr_tree (stmt, liveness, pmydata);
                 *(NODEPTR_TYPE *) List_NewLast (lst, sizeof (NODEPTR_TYPE)) = stmt;
             }
             stmt = check (stmt, oe) ? RIGHT_CHILD (stmt) : NULL;
@@ -620,21 +655,60 @@ linearize_expr_tree (NODEPTR_TYPE stmt, PINTERNAL_DATA pmydata)
         }
     }
 
-    free (leaves);
+    free ((void *) leaves);
 }
 
-static void commit (basic_block block, NODEPTR_TYPE p, int goalnt, PINTERNAL_DATA pmydata)
+static void insert (basic_block block, NODEPTR_TYPE p, int goalnt, PINTERNAL_DATA pmydata)
 {
     PTREEINFO pti;
-
-# if !defined(OLD)
-    linearize_expr_tree (p, pmydata);
-# endif /* OLD */
 
     pti = (PTREEINFO) List_NewLast (pmydata->trees, sizeof (TREEINFO));
     pti->goalnt = goalnt;
     pti->p = p;
     pti->block = block;
+    pti->liveness = BITMAP_XMALLOC ();
+    pti->next_liveness = BITMAP_XMALLOC ();
+}
+
+static void commit1(basic_block block, NODEPTR_TYPE p, int goalnt, PINTERNAL_DATA pmydata)
+{
+# if defined(SPLIT)
+    int eruleno = burmArm32_rule(STATE_LABEL(p), goalnt);
+    short *nts = burmArm32_nts[eruleno];
+    NODEPTR_TYPE *kids;
+    int i;
+    NODEPTR_TYPE p1;
+
+    /* Note: 此数组的大小不能小于burmArm32_nts数组的大小。  */
+    kids = (NODEPTR_TYPE *) xmalloc (sizeof (NODEPTR_TYPE) * 100);
+
+    burmArm32_kids(p, eruleno, kids);
+    for (i = 0; nts[i]; i++)
+        commit1 (block, kids[i], nts[i], pmydata);
+
+    for (i = 0; nts[i]; i++)
+    {
+        if (!kids[i]->dp)
+        {
+            p1 = tree (pmydata->tree_nodes, kids[i]->op, LEFT_CHILD(kids[i]), RIGHT_CHILD(kids[i]));
+            p1->operand = kids[i]->operand;
+            insert (block, p1, burmArm32_reg_NT, pmydata);
+            kids[i]->op = REGISTER;
+            LEFT_CHILD(kids[i]) = RIGHT_CHILD(kids[i]) = NULL;
+        }
+    }
+
+# endif /* SPLIT */
+    insert (block, p, goalnt, pmydata);
+# if defined(SPLIT)
+    free ((void *) kids);
+# endif /* SPLIT */
+}
+
+static void commit(basic_block block, NODEPTR_TYPE p, int goalnt, PINTERNAL_DATA pmydata)
+{
+    burmArm32_label (p);
+    commit1 (block, p, goalnt, pmydata);
 }
 
 static BOOL isDisp(int num)
@@ -1186,7 +1260,7 @@ dwarfout_line (IRInst inst, PINTERNAL_DATA pmydata)
 static NODEPTR_TYPE
 getreg (varpool_node vnode, struct avl_table *reg_map)
 {
-    reg_mapping *p = (reg_mapping *) avl_find (reg_map, &vnode);
+    reg_mapping *p = (reg_mapping *) avl_find (reg_map, (void *) &vnode);
     return p ? p->p : NULL;
 }
 
@@ -1279,7 +1353,7 @@ static BOOL check_paths(IRInst s, IRInst d, varpool_node_set set)
 
     bResult = TRUE;
 exit:
-    free (leaves);
+    free ((void *) leaves);
 
     return bResult;
 }
@@ -1288,7 +1362,11 @@ static NODEPTR_TYPE
 handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_t vreg, PINTERNAL_DATA pmydata)
 {
     NODEPTR_TYPE old_node;
+# if defined(TC)
     BOOL delay = TRUE;
+# else  /* TC */
+    BOOL delay = FALSE;
+# endif /* !TC */
     int i;
     varpool_node vnode;
     bitmap_iterator bi;
@@ -1321,12 +1399,12 @@ handler (varpool_node_set set, IRInst inst, NODEPTR_TYPE p, vreg_t vreg, PINTERN
         /* 不在同一个循环内使用。  */
         if  (IRInstIsOutput (inst, i) &&
              !bitmap_empty_p (vnode->_uses) &&
-# if !defined(OLD)
+# if defined(TC)
              (target_insn->bb->loop_father != inst->bb->loop_father ||
              ! check_paths (inst, target_insn, set)))
-# else  /* !OLD */
+# else  /* TC */
              target_insn->bb != inst->bb)
-# endif /* OLD */
+# endif /* !TC */
         {
             delay = FALSE;
             break;
@@ -1442,7 +1520,8 @@ load_immediate (basic_block block, vreg_t dest_reg, int num, enum var_types type
         }
         else
         {
-            p = cp->p;
+            p = tree (pmydata->tree_nodes, REGISTER, NULL, NULL);
+            p->operand.vreg = cp->p->operand.vreg;
         }
     }
     else
@@ -2654,7 +2733,7 @@ static BOOL translate_call (IRInst inst, PINTERNAL_DATA pmydata)
 
     /* 统计各类参数的个数。  */
     funcCallArgCnt = GetConstVal (IRInstGetOperand (inst, 2)->var, 0)->cvValue.cvIval;
-    for(  curs=(IRInst *)InterCodeGetCursor (inst->bb->cfg->code, inst)
+    for(  curs=InterCodeGetCursor (inst->bb->cfg->code, inst)
        ;  curs!=NULL
        ;  curs = (IRInst *)List_Prev((void *)curs)
        )
@@ -2675,7 +2754,7 @@ static BOOL translate_call (IRInst inst, PINTERNAL_DATA pmydata)
     commit (inst->bb, p, 1, pmydata);
 
     /* 产生放置参数的指令。  */
-    for(  curs=(IRInst *)InterCodeGetCursor (inst->bb->cfg->code, inst)
+    for(  curs=InterCodeGetCursor (inst->bb->cfg->code, inst)
        ;  curs!=NULL
        ;  curs = (IRInst *)List_Prev((void *)curs)
        )
@@ -2694,6 +2773,7 @@ static BOOL translate_call (IRInst inst, PINTERNAL_DATA pmydata)
                         p = GetTreeNode (param, pmydata);
                     p = tree (pmydata->tree_nodes, VMOV, p, NULL);
                     p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, VREG (fcnt), VFP_REGS);
+                    p->dp = TRUE;
                     commit (inst->bb, p, burmArm32_reg_NT, pmydata);
                 }
                 else
@@ -2730,6 +2810,7 @@ static BOOL translate_call (IRInst inst, PINTERNAL_DATA pmydata)
                             p = GetTreeNode (param, pmydata);
                     }
                     p = tree (pmydata->tree_nodes, MOV, p, NULL);
+                    p->dp = TRUE;
                     p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, icnt, GENERAL_REGS);
                     commit (inst->bb, p, burmArm32_reg_NT, pmydata);
                 }
@@ -2762,6 +2843,7 @@ static BOOL translate_call (IRInst inst, PINTERNAL_DATA pmydata)
         p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, R0_REGNUM + FIRST_VFP_REGNUM, VFP_REGS);
         p = tree(pmydata->tree_nodes, VMOV, p, NULL);
         p->operand.vreg = vreg;
+        p->dp = TRUE;
 
         /* 必须立即进行指令选择，若进行统一指令选择可能导致r0被覆盖。  */
         commit (inst->bb, p, burmArm32_reg_NT, pmydata);
@@ -2776,6 +2858,7 @@ static BOOL translate_call (IRInst inst, PINTERNAL_DATA pmydata)
         p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, R0_REGNUM, GENERAL_REGS);
         p = tree(pmydata->tree_nodes, MOV, p, NULL);
         p->operand.vreg = vreg;
+        p->dp = TRUE;
 
         /* 必须立即进行指令选择，若进行统一指令选择可能导致r0被覆盖。  */
         commit (inst->bb, p, burmArm32_reg_NT, pmydata);
@@ -2819,12 +2902,12 @@ static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata)
     commit (inst->bb, p, 1, pmydata);
 
     /* 计算参数个数以判断是否需要帧指针。  */
-    for(  curs=(IRInst *)InterCodeGetCursor (inst->bb->cfg->code, inst), fcnt = 0, icnt = 0
+    for(  curs=InterCodeGetCursor (inst->bb->cfg->code, inst), fcnt = 0, icnt = 0
        ;  curs!=NULL
        ;  curs = (IRInst *)List_Next((void *)curs)
        )
     {
-        if  ((*(IRInst *)curs)->opcode == IRINST_OP_fparam)
+        if  ((*curs)->opcode == IRINST_OP_fparam)
         {
             param = varpool_get_node (pmydata->set, IRInstGetOperand(*curs, 0));
             if  (param->var->sdType->tdTypeKind == TYP_FLOAT)
@@ -2867,14 +2950,15 @@ static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata)
     tmp->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
     p = tree (pmydata->tree_nodes, SUB, tmp, p);
     p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
+    p->dp = TRUE;
     commit (inst->bb, p, burmArm32_reg_NT, pmydata);
 
-    for(  curs=(IRInst *)InterCodeGetCursor (inst->bb->cfg->code, inst), fcnt = 0, icnt = 0
+    for(  curs=InterCodeGetCursor (inst->bb->cfg->code, inst), fcnt = 0, icnt = 0
        ;  curs!=NULL
        ;  curs = (IRInst *)List_Next((void *)curs)
        )
     {
-        if  ((*(IRInst *)curs)->opcode == IRINST_OP_fparam)
+        if  ((*curs)->opcode == IRINST_OP_fparam)
         {
             param = varpool_get_node (pmydata->set, IRInstGetOperand(*curs, 0));
             if  (param->var->sdType->tdTypeKind == TYP_FLOAT)
@@ -2886,6 +2970,7 @@ static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata)
                     p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, VREG (fcnt), VFP_REGS);
                     p = tree (pmydata->tree_nodes, VMOV, p, NULL);
                     p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, -1, VFP_REGS);
+                    p->dp = TRUE;
                 }
                 else
                 {
@@ -2903,6 +2988,7 @@ static BOOL translate_entry (IRInst inst, PINTERNAL_DATA pmydata)
                     p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, icnt, GENERAL_REGS);
                     p = tree (pmydata->tree_nodes, MOV, p, NULL);
                     p->operand.vreg = gen_vregArm32(pmydata->virtual_regs, -1, GENERAL_REGS);
+                    p->dp = TRUE;
                 }
                 else
                 {
@@ -2952,6 +3038,7 @@ static BOOL translate_exit (IRInst inst, PINTERNAL_DATA pmydata)
         if  (!p)
             p = GetTreeNode (retval, pmydata);
         p = tree (pmydata->tree_nodes, VMOV, p, NULL);
+        p->dp = TRUE;
         p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, VREG (R0_REGNUM), VFP_REGS);
 
         commit (inst->bb, p, burmArm32_reg_NT, pmydata);
@@ -2963,6 +3050,7 @@ static BOOL translate_exit (IRInst inst, PINTERNAL_DATA pmydata)
         if  (!p)
             p = GetTreeNode (retval, pmydata);
         p = tree (pmydata->tree_nodes, MOV, p, NULL);
+        p->dp = TRUE;
         p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, R0_REGNUM, GENERAL_REGS);
 
         commit (inst->bb, p, burmArm32_reg_NT, pmydata);
@@ -2980,6 +3068,7 @@ static BOOL translate_exit (IRInst inst, PINTERNAL_DATA pmydata)
     vreg->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
     p = tree (pmydata->tree_nodes, ADD, vreg, p);
     p->operand.vreg = gen_vregArm32 (pmydata->virtual_regs, SP_REGNUM, GENERAL_REGS);
+    p->dp = TRUE;
     commit (inst->bb, p, burmArm32_reg_NT, pmydata);
 
     /* 将callee_save寄存器弹出。  */
@@ -3368,6 +3457,313 @@ static void ShortestPath_FLOYD(control_flow_graph G)
 }
 #endif
 
+struct pair
+{
+    int x;
+    int y;
+};
+
+typedef struct
+{
+    PTREEINFO v; /* 顶点信息 */
+    int dp;
+    bitmap firstin,firstout; /* 第一个表结点的地址,指向第一条依附该顶点的弧的指针 */
+    bitmap bmp;  
+}VNode;
+
+typedef struct
+{
+    VNode *vertices;
+    int allocated;
+    int vexnum,arcnum; /* 图的当前顶点数和弧数 */
+    struct avl_table *map;
+    int* head;
+    int head_count;
+}ALGraph;
+
+static int compare_pairs( struct pair *arg1, struct pair *arg2 )
+{
+    int ret = 0 ;
+
+    if ( arg1->x < arg2->x )
+        ret = -1 ;
+    else if ( arg1->x > arg2->x )
+        ret = 1 ;
+
+    return( ret );
+}
+
+static int LocateVex(ALGraph *G,int u)
+{ /* 返回顶点u在有向图G中的位置(序号),如不存在则返回-1 */
+    struct pair *p;
+    p = (struct pair *) avl_find (G->map, &u);
+    if  (p)
+        return p->y;
+    return -1;
+}
+
+static void InsertArc(ALGraph *G,int i,int j)
+{ /* 初始条件: 有向图G存在,v和w是G中两个顶点 */
+   /* 操作结果: 在G中增添弧<v,w> */
+    if  (!bitmap_bit_p ((*G). vertices[j].firstin, i) &&
+         i != j)
+    {
+        bitmap_set_bit((*G). vertices[j].firstin, i);
+        bitmap_set_bit((*G). vertices[i].firstout, j);
+        (*G). arcnum++; /* 弧数加1 */
+    }
+}
+
+static int InsertVex(ALGraph *G, PTREEINFO v)
+{  /* 初始条件: 有向图G存在,v和有向图G中顶点有相同特征 */
+   /* 操作结果: 在有向图G中增添新顶点v(不增添与顶点相关的弧,留待InsertArc()去做) */
+    struct pair *p;
+    if ((*G). vexnum >= G->allocated) 
+    {
+        int new_size = ((*G). vexnum * 2) + 1;
+        (*G). vertices = (VNode *) xrealloc ((*G). vertices, new_size * sizeof (VNode));
+        G->allocated = new_size;
+    }
+
+    memset ((*G). vertices + (*G). vexnum, 0, sizeof (VNode));
+    (*G).vertices[(*G). vexnum].firstin = BITMAP_XMALLOC ();
+    (*G).vertices[(*G). vexnum].firstout = BITMAP_XMALLOC ();
+    (*G).vertices[(*G). vexnum].bmp = BITMAP_XMALLOC ();
+    (*G).vertices[(*G). vexnum].v = v;
+    (*G).vertices[(*G). vexnum].dp = -1;
+
+    if (v)
+    {
+        p = (struct pair *) xmalloc (sizeof (struct pair));
+        p->x = v->p->id;
+        p->y = (*G). vexnum;
+        avl_insert (G->map, p);
+    }
+
+    (*G). vexnum++;
+
+    return  (*G). vexnum - 1;
+}
+
+static void CreateDG(ALGraph *G)
+{ /* 采用十字链表存储表示,构造有向图G。算法7.3 */
+    memset (G, 0, sizeof (*G));
+    G->map = avl_create ((avl_comparison_func *) compare_pairs, NULL, NULL);
+}
+
+static void DestroyGraph(ALGraph *G)
+{   /* 初始条件: 有向图G存在 */
+    /* 操作结果: 销毁有向图G */
+    int j;
+
+    for(j=0;j<(*G).vexnum;j++) /* 对所有顶点 */
+    {
+        BITMAP_XFREE ((*G).vertices[j].firstin);
+        BITMAP_XFREE ((*G).vertices[j].firstout);
+        BITMAP_XFREE ((*G).vertices[j].bmp);
+    }
+    free (G->vertices);
+    free (G->head);
+    avl_destroy (G->map, (avl_item_func *) free);
+    memset (G, 0, sizeof (*G));
+}
+
+static void InOrderTraverse1(NODEPTR_TYPE T, NODEPTR_TYPE header, ALGraph *DDG, struct avl_table *mdep)
+{ /* 采用二叉链表存储结构，Visit是对数据元素操作的应用函数。*/
+  /* 中序遍历二叉树T的非递归算法(利用栈)，对每个数据元素调用函数Visit */
+    if(LEFT_CHILD(T)!=NULL) /* 左子树不空 */
+        InOrderTraverse1(LEFT_CHILD(T),header, DDG, mdep);
+    if(LEFT_CHILD(T)==NULL && RIGHT_CHILD(T)==NULL && T->op == REGISTER)
+    {
+        struct pair *p;
+        int h = LocateVex (DDG, header->id);
+        p = (struct pair *) avl_find (mdep, &T->operand.vreg->vregno);
+        bitmap_set_bit (DDG->vertices[h].bmp, T->operand.vreg->vregno);
+        if (p)
+            InsertArc (DDG, p->y, h);
+    }
+    if(RIGHT_CHILD(T)!=NULL) /* 右子树不空 */
+        InOrderTraverse1(RIGHT_CHILD(T),header, DDG, mdep);
+}
+
+static void InOrderTraverse(NODEPTR_TYPE T,bitmap bmp, int *maxval)
+{ /* 初始条件: 二叉树存在,Visit是对结点操作的应用函数 */
+  /* 操作结果: 中序遍历T,对每个结点调用函数Visit一次且仅一次。 */
+  /*           一旦Visit()失败,则操作失败 */
+    if(LEFT_CHILD(T)!=NULL) /* 左子树不空 */
+        InOrderTraverse(LEFT_CHILD(T),bmp, maxval);
+    if(LEFT_CHILD(T)==NULL && RIGHT_CHILD(T)==NULL && T->op == REGISTER)
+    {
+        bitmap_set_bit (bmp, T->operand.vreg->vregno);
+        *maxval = max (*maxval, bitmap_count_bits (bmp));
+    }
+    if(RIGHT_CHILD(T)!=NULL) /* 右子树不空 */
+        InOrderTraverse(RIGHT_CHILD(T),bmp, maxval);
+}
+
+static int liveness(LIST lst)
+{
+    int maxval = 0;
+    PTREEINFO *curs;
+    bitmap bmp = BITMAP_XMALLOC ();
+    PTREEINFO *last = (PTREEINFO *) List_Last(lst);
+
+    for(  curs=(PTREEINFO *) List_Last(lst)
+       ;  curs!=NULL
+       ;  curs = (PTREEINFO *) List_Prev((void *)curs)
+       )
+    {
+        if (last == curs && List_Prev (*curs))
+            bitmap_copy (bmp, ((PTREEINFO) List_Prev (*curs))->liveness);
+        if (!(*curs)->p->dp)
+            bitmap_clear_bit(bmp, (*curs)->p->operand.vreg->vregno);
+        InOrderTraverse ((*curs)->p, bmp, &maxval);
+    }
+    BITMAP_XFREE (bmp);
+    return maxval;
+}
+
+static void nce(ALGraph *G, bitmap S, int *indegree, LIST lst, PLIST plst, int *live)
+{
+    unsigned i, k;
+    int val1;
+    bitmap_iterator bi, bi2;
+    bitmap bmp;
+    PTREEINFO *curs;
+
+    if (bitmap_empty_p (S))
+    {
+        val1 = liveness (lst);
+        if (val1 < *live)
+        // if (val1 > *live)
+        {
+            List_Clear (*plst);
+            *live = val1;
+            for(  curs=(PTREEINFO *) List_First(lst)
+               ;  curs!=NULL
+               ;  curs = (PTREEINFO *) List_Next((void *)curs)
+               )
+                *(PTREEINFO *) List_NewLast (*plst, sizeof (PTREEINFO)) = *curs;
+        }
+    }
+    else
+    {
+        bmp = BITMAP_XMALLOC ();
+        for (bmp_iter_set_init (&bi, S, 0, &i);
+             bmp_iter_set (&bi, &i); 
+             bmp_iter_next (&bi, &i))
+        {
+            bitmap_copy (bmp, S);
+            bitmap_clear_bit(bmp, i);
+            for (bmp_iter_set_init (&bi2, (G->vertices[i].firstout), 0, &k);
+                 bmp_iter_set (&bi2, &k); 
+                 bmp_iter_next (&bi2, &k))
+            { /* 对i号顶点的每个邻接点的入度减1 */
+              if(!(--indegree[k])) /* 若入度减为0,则入栈 */
+                bitmap_set_bit(bmp, k);
+            }
+            if (G->vertices[i].v)
+              *(PTREEINFO *) List_NewLast (lst, sizeof (PTREEINFO)) = G->vertices[i].v;
+            nce (G, bmp, indegree, lst, plst, live);
+            if (G->vertices[i].v)
+              List_DeleteLast (lst);
+            for (bmp_iter_set_init (&bi2, (G->vertices[i].firstout), 0, &k);
+                 bmp_iter_set (&bi2, &k); 
+                 bmp_iter_next (&bi2, &k))
+            { /* 对i号顶点的每个邻接点的入度减1 */
+              indegree[k]++;
+            }
+        }
+        BITMAP_XFREE (bmp);
+    }
+}
+
+static void TopologicalSort1(ALGraph *G, LIST new_order)
+{ /* 有向图G采用邻接表存储结构。若G无回路,则输出G的顶点的一个拓扑序列并返回OK, */
+  bitmap S;
+  int *indegree;
+  LIST lst, lst2 = List_Create();
+  int i;
+  int live = 0x7fffffff;
+//   int live = -1;
+  PTREEINFO *curs;
+
+  S = BITMAP_XMALLOC (); /* 初始化栈 */
+  lst = List_Create ();
+
+  indegree = (int *) xmalloc (sizeof (int) * G->vexnum);
+  for(i=0;i<G->vexnum;++i) /* 建零入度顶点栈S */
+    indegree[i] = bitmap_count_bits(G->vertices[i].firstin);
+  for(i=0;i<G->vexnum;++i) /* 建零入度顶点栈S */
+    if(!indegree[i])
+      bitmap_set_bit(S, i); /* 入度为0者进栈 */
+  nce (G, S, indegree, lst, &lst2, &live);
+  for(  curs=(PTREEINFO *) List_First(lst2)
+     ;  curs!=NULL
+     ;  curs = (PTREEINFO *) List_Next((void *)curs)
+     )
+      *(PTREEINFO *) List_NewLast (new_order, sizeof (PTREEINFO)) = *curs;
+  BITMAP_XFREE (S);
+  List_Destroy (&lst);
+  free (indegree);
+  List_Destroy (&lst2);
+}
+
+static void TopologicalSort(ALGraph *G, LIST new_order)
+{ /* 有向图G采用邻接表存储结构。若G无回路,则输出G的顶点的一个拓扑序列并返回OK, */
+  /* 否则返回ERROR。*/
+  int i, maxval;
+  int *indegree;
+  unsigned k;
+  bitmap_iterator bi;
+  bitmap S;
+  LIST lst;
+  PTREEINFO *curs;
+
+  S = BITMAP_XMALLOC (); /* 初始化栈 */
+  lst = List_Create ();
+
+  indegree = (int *) xmalloc (sizeof (int) * G->vexnum);
+  for(i=0;i<G->vexnum;++i) /* 建零入度顶点栈S */
+    indegree[i] = bitmap_count_bits(G->vertices[i].firstin);
+  for(i=0;i<G->vexnum;++i) /* 建零入度顶点栈S */
+    if(!indegree[i])
+      bitmap_set_bit(S, i); /* 入度为0者进栈 */
+  while(!bitmap_empty_p (S))
+  { /* 栈不空 */
+      maxval = -1;
+      for (bmp_iter_set_init (&bi, S, 0, &k);
+           bmp_iter_set (&bi, &k); 
+           bmp_iter_next (&bi, &k))
+      {
+        if (maxval < (int) bitmap_count_bits (G->vertices[k].v->liveness))
+        {
+          maxval = (int) bitmap_count_bits (G->vertices[k].v->liveness);
+          i = k;
+        }
+        // i = bitmap_first_set_bit(S);
+      }
+    bitmap_clear_bit(S, i);
+    if (G->vertices[i].v)
+      *(PTREEINFO *) List_NewLast (lst, sizeof (PTREEINFO)) = G->vertices[i].v;
+    for (bmp_iter_set_init (&bi, (G->vertices[i].firstout), 0, &k);
+         bmp_iter_set (&bi, &k); 
+         bmp_iter_next (&bi, &k))
+    { /* 对i号顶点的每个邻接点的入度减1 */
+      if(!(--indegree[k])) /* 若入度减为0,则入栈 */
+        bitmap_set_bit(S, k);
+    }
+  }
+  BITMAP_XFREE (S);
+  for(  curs=(PTREEINFO *) List_First(lst)
+     ;  curs!=NULL 
+     ;  curs = (PTREEINFO *) List_Next((void *)curs)
+     )
+    *(PTREEINFO *) List_NewLast (new_order, sizeof (PTREEINFO)) = *curs;
+  List_Destroy (&lst);
+  free (indegree);
+}
+
 BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab stab, struct avl_table *virtual_regs, struct Backend* backend, struct dwarf_data *ddata) 
 {
     BOOL bSuccess = FALSE;
@@ -3378,9 +3774,12 @@ BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab st
     PTREEINFO pti;
     IRInst *insn;
     IRInst *next_insn;
+    PTREEINFO *curs;
+    LIST new_order;
 
     /* 初始化内存池，供iburg产生的程序使用。  */
     mempool = List_Create ();
+    new_order = List_Create ();
 
     /* 创建内部数据。  */
     pmydata = (PINTERNAL_DATA) xmalloc (sizeof (*pmydata));
@@ -3399,9 +3798,9 @@ BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab st
     pmydata->backend = backend;
 
     flow_loops_find (func);
-# if !defined(OLD)
+# if defined(TC)
     ShortestPath_FLOYD (func);
-# endif /* OLD */
+# endif /* TC */
 
     blocks = List_Create ();
     pre_and_rev_post_order_compute (func, NULL, blocks, TRUE, FALSE);
@@ -3488,26 +3887,133 @@ BOOL InstSelectorArm32 (control_flow_graph func, varpool_node_set set, SymTab st
         }
     }
 
-    /* 指令选择，同时处理有向无环图的情况。  */
+# if defined(SEQ)
+    {
+        int maxval = 0;
+        bitmap bmp = BITMAP_XMALLOC ();
+
+        for(  pti=(PTREEINFO) List_Last(pmydata->trees)
+           ;  pti!=NULL
+           ;  pti = (PTREEINFO) List_Prev((void *)pti)
+           )
+        {
+            bitmap_copy (pti->next_liveness, bmp);
+            if (!pti->p->dp)
+                bitmap_clear_bit (bmp, pti->p->operand.vreg->vregno);
+            InOrderTraverse (pti->p, bmp, &maxval);
+            bitmap_copy (pti->liveness, bmp);
+        }
+        BITMAP_XFREE (bmp);
+    }
+# endif /* SEQ */
+
+# if defined(SEQ)
+    {
+        PTREEINFO last_pos = NULL;
+        PTREEINFO cursor;
+        struct avl_table *mdep;
+        struct pair *p;
+        ALGraph DDG;
+        int i, v;
+
+        for(  pti=(PTREEINFO) List_First(pmydata->trees)
+           ;  pti!=NULL
+           ;  pti = (PTREEINFO) List_Next((void *)pti)
+           )
+        {
+            if (pti->p->dp)
+            {
+                CreateDG (&DDG);
+                mdep = avl_create ((avl_comparison_func *) compare_pairs, NULL, NULL);
+
+                for(  cursor=last_pos ? (PTREEINFO) List_Next((void *)last_pos) : (PTREEINFO) List_First(pmydata->trees)
+                   ;  cursor!=pti
+                   ;  cursor = (PTREEINFO) List_Next((void *)cursor)
+                   )
+                    InsertVex (&DDG, cursor);
+
+                for(  cursor=last_pos ? (PTREEINFO) List_Next((void *)last_pos) : (PTREEINFO) List_First(pmydata->trees)
+                   ;  cursor!=pti
+                   ;  cursor = (PTREEINFO) List_Next((void *)cursor)
+                   )
+                {
+                    InOrderTraverse1 (cursor->p, cursor->p, &DDG, mdep);
+                    p = (struct pair *) avl_find (mdep, &cursor->p->operand.vreg->vregno);
+                    v = LocateVex (&DDG, cursor->p->id);
+                    if (p)
+                    {
+                        InsertArc (&DDG, p->y, v);
+                        p->y = v;
+                    }
+                    else
+                    {
+                        p = (struct pair *) xmalloc (sizeof (struct pair));
+                        p->x = cursor->p->operand.vreg->vregno;
+                        p->y = v;
+                        free (avl_replace (mdep, p));
+                    }
+                    for (i = 0; i < v; i++)
+                    {
+                        if (bitmap_bit_p (DDG.vertices[i].bmp, cursor->p->operand.vreg->vregno))
+                            InsertArc (&DDG, i, v);
+                    }
+                }
+# if !defined(Greedy)
+                TopologicalSort1 (&DDG, new_order);
+# else
+                TopologicalSort (&DDG, new_order);
+# endif /* Greedy */
+                DestroyGraph (&DDG);
+                avl_destroy (mdep, (avl_item_func *) free);
+
+                *(PTREEINFO *) List_NewLast (new_order, sizeof (PTREEINFO)) = pti;
+
+                last_pos = pti;
+            }
+        }
+    }
+# else
     for(  pti=(PTREEINFO) List_First(pmydata->trees)
        ;  pti!=NULL
        ;  pti = (PTREEINFO) List_Next((void *)pti)
        )
+        *(PTREEINFO *) List_NewLast (new_order, sizeof (PTREEINFO)) = pti;
+# endif /* SEQ */
+
+    /* 指令选择，同时处理有向无环图的情况。  */
+    for(  curs=(PTREEINFO *) List_First(new_order)
+       ;  curs!=NULL
+       ;  curs = (PTREEINFO *) List_Next((void *)curs)
+       )
     {
-        burmArm32_label (pti->p);
+# if defined(SU)
+        linearize_expr_tree ((*curs)->p, (*curs)->next_liveness, pmydata);
+# endif /* SU */
+
+        burmArm32_label ((*curs)->p);
 #if !defined(NDEBUG)
-/*      dumpCover (pti->p, pti->goalnt, 0); */
+        // dumpCover ((*curs)->p, (*curs)->goalnt, 0); 
 #endif
-        burmArm32_select (pti->block, pti->p, pti->goalnt, pmydata->virtual_regs, backend);
+        burmArm32_select ((*curs)->block, (*curs)->p, (*curs)->goalnt, pmydata->virtual_regs, backend);
     }
 
     bSuccess = TRUE;
 fail:
     /* 执行清理。  */
+    for(  pti=(PTREEINFO) List_First(pmydata->trees)
+       ;  pti!=NULL
+       ;  pti = (PTREEINFO) List_Next((void *)pti)
+       )
+    {
+        BITMAP_XFREE (pti->liveness);
+        BITMAP_XFREE (pti->next_liveness);
+    }
+
     List_Destroy (&blocks);
     List_Destroy (&mempool);
     List_Destroy (&pmydata->tree_nodes);
     List_Destroy (&pmydata->trees);
+    List_Destroy (&new_order);
     List_Destroy (&pmydata->_constants);
     avl_destroy (pmydata->reg_map, (avl_item_func *) free);
     avl_destroy (pmydata->node_map, (avl_item_func *) NULL);

@@ -766,8 +766,8 @@ BOOL CodeGeneratorArm32(InterCode code, SymTab stab, const char *name, FILE *fil
             goto fail;
 
         /* 寄存器分配。  */
-/*      ra_colorize_graph (*func, virtual_regs, backend); */
-        LinearScanAllocator (*func, virtual_regs, backend);
+        // ra_colorize_graph (*func, virtual_regs, backend); 
+        LinearScanAllocator (*func, virtual_regs, backend); 
 
         if  (comp->cmpConfig.optimize)
             if_convertArm32 (*func);

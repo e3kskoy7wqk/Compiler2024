@@ -23,7 +23,7 @@ static struct pass_data opt_pass[] = {
     { "Inline transform" , inline_transform  } ,    /* 内联替换 */
     { "Global Variable Localization" , GlobalVariableLocalization  } ,    /* 全局变量局部化 */
     { "builds the SSA form" , build_ssa  } ,    /* SSA形式的构建 */
-    { "Sparse Cond Const Prop" , SparseCondConstProp  } ,    /* 稀疏条件常量传播 */
+    // { "Sparse Cond Const Prop" , SparseCondConstProp  } ,    /* 稀疏条件常量传播 */
     { "Global Value Numbering" , GlobalValueNumbering  } ,    /* 全局值编号 */
     { "Dead Code Elimination" , perform_ssa_dce  } ,    /* 死代码消除 */
     { "Translating out of SSA form" , remove_ssa_form  } ,    /* SSA形式的消去 */
@@ -36,7 +36,7 @@ static struct pass_data opt_pass[] = {
     { "builds the SSA form" , build_ssa  } ,    /* SSA形式的构建 */
     { "Dead Code Elimination" , perform_ssa_dce  } ,    /* 死代码消除 */
     { "Tree-Height Reduction" , treeheight  } ,    /* 树高平衡 */
-    { "Sparse Cond Const Prop" , SparseCondConstProp  } ,    /* 稀疏条件常量传播 */
+    // { "Sparse Cond Const Prop" , SparseCondConstProp  } ,    /* 稀疏条件常量传播 */
     { "Global Value Numbering" , GlobalValueNumbering  } ,    /* 全局值编号 */
     { "Dead Code Elimination" , perform_ssa_dce  } ,    /* 死代码消除 */
     { "Translating out of SSA form" , remove_ssa_form  } ,    /* SSA形式的消去 */

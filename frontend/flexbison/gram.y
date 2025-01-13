@@ -51,9 +51,6 @@ yyerror (const char *msg)
 
 %}
 
-%nonassoc LOWER_THAN_ELSE
-%nonassoc L_ELSE
-
 %union
 {
     float floatValue;
@@ -61,74 +58,49 @@ yyerror (const char *msg)
     Tree node;
 }
 
-%token <node> L_CONST      "const"
-%token <node> L_INT        "int"
-%token <node> L_FLOAT      "float"
-%token <node> L_VOID       "void"
-%token <node> L_AND        "&"
-%token <node> L_ANDAND     "&&"
-%token <node> L_ANDEQ      "&="
-%token <node> L_ASSIGN      "="
-%token <node> L_COLON       ":"
-%token <node> L_COMMA       ","
-%token <node> L_DECR        "--"
-%token <node> L_DIV         "/"
-%token <node> L_DIVEQ       "/="
-%token <node> L_EQUALS      "=="
-%token <node> L_EXCLAIM     "!"
-%token <node> L_GT          ">"
-%token <node> L_GTEQ        ">="
-%token <node> L_LBRACK      "["
-%token <node> L_LT          "<"
-%token <node> L_LTEQ        "<="
-%token <node> L_MINUS       "-"
-%token <node> L_MINUSEQ     "-="
-%token <node> L_MOD         "%"
-%token <node> L_MULT        "*"
-%token <node> L_MULTEQ      "*="
-%token <node> L_NOTEQ       "!="
-%token <node> L_OR          "|"
-%token <node> L_OREQ        "|="
-%token <node> L_OROR        "||"
-%token <node> L_PERIOD      "."
-%token <node> L_PLUS        "+"
-%token <node> L_QUEST       "?"
-%token <node> L_TILDE       "~"
-%token <node> L_XOR         "^"
-%token <node> L_XOREQ       "^="
-%token <node> L_BREAK       "break"
-%token <node> L_CASE        "case"
-%token <node> L_CONTINUE    "continue"
-%token <node> L_DEFAULT     "default"
-%token <node> L_DO          "do"
-%token <node> L_ELSE        "else"
-%token <node> L_FOR         "for"
-%token <node> L_GOTO        "goto"
-%token <node> L_IF          "if"
-%token <node> L_LCURLY      "{"
-%token <node> L_LPAREN      "("
-%token <node> L_RBRACK      "]"
-%token <node> L_RCURLY      "}"
-%token <node> L_RETURN      "return"
-%token <node> L_RPAREN      ")"
-%token <node> L_SEMI        ";"
-%token <node> L_SIZEOF      "sizeof"
-%token <node> L_SW          "switch"
-%token <node> L_WHILE       "while"
-%token <node> Identifier
-%token <node>    IntConst 
-%token <node>  floatConst
+%token <node> L_CONST           /* const */
+%token <node> L_INT             /* int */
+%token <node> L_FLOAT           /* float */
+%token <node> L_VOID            /* void */
+%token <node> L_ANDAND          /* && */
+%token <node> L_ASSIGN          /* = */
+%token <node> L_COLON           /* : */
+%token <node> L_COMMA           /* , */
+%token <node> L_DIV             /* / */
+%token <node> L_EQUALS          /* == */
+%token <node> L_EXCLAIM         /* ! */
+%token <node> L_GT              /* > */
+%token <node> L_GTEQ            /* >= */
+%token <node> L_LBRACK          /* [ */
+%token <node> L_LT              /* < */
+%token <node> L_LTEQ            /* <= */
+%token <node> L_MINUS           /* - */
+%token <node> L_MOD             /* % */
+%token <node> L_MULT            /* * */
+%token <node> L_NOTEQ           /* != */
+%token <node> L_OROR            /* || */
+%token <node> L_PLUS            /* + */
+%token <node> L_BREAK           /* break */
+%token <node> L_CONTINUE        /* continue */
+%token <node> L_ELSE            /* else */
+%token <node> L_IF              /* if */
+%token <node> L_LCURLY          /* { */
+%token <node> L_LPAREN          /* ( */
+%token <node> L_RBRACK          /* ] */
+%token <node> L_RCURLY          /* } */
+%token <node> L_RETURN          /* return */
+%token <node> L_RPAREN          /* ) */
+%token <node> L_SEMI            /* ; */
+%token <node> L_WHILE           /* while */
+%token <node> L_IDENT
+%token <node> L_CINTEGER 
+%token <node> L_CFLOAT
+
+%nonassoc LOWER_THAN_ELSE
+%nonassoc L_ELSE
 
 
 %start CompUnit
-
-/* 此处优先级似乎无用  */
-%left L_ASSIGN
-%left L_PLUS L_MINUS
-%left L_MULT L_DIV L_MOD
-%left L_OROR
-%left L_ANDAND
-%left L_EXCLAIM
 
 /* 指定文法的非终结符号，<>可指定文法属性  */
 %type <node> CompUnit
@@ -275,9 +247,9 @@ BType:
 
 /* 常数定义  */
 ConstDef:
-  Identifier ConstExpGroup L_ASSIGN ConstInitVal  
+  L_IDENT ConstExpGroup L_ASSIGN ConstInitVal  
     {
-      TRACE_PARSER (fprintf (stderr, "%d: ConstDef -> Identifier ConstExpGroup \"=\" ConstInitVal\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: ConstDef -> L_IDENT ConstExpGroup \"=\" ConstInitVal\n", ++nCount));
       $$ = parseCreateNode(TN_VarDef, $1->tnLineNo, $1->tnColumn);
       InsertChildNode($$, $2);
       InsertChildNode($$, $4);
@@ -386,9 +358,9 @@ VarDefGroup:
 
 /* 变量定义  */
 VarDef:
-  Identifier ConstExpGroup 
+  L_IDENT ConstExpGroup 
     { 
-      TRACE_PARSER (fprintf (stderr, "%d: VarDef -> Identifier ConstExpGroup\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: VarDef -> L_IDENT ConstExpGroup\n", ++nCount));
       $$ = parseCreateNode(TN_VarDef, $1->tnLineNo, $1->tnColumn);
       InsertChildNode($$, $2);
       while ($2->tnOper != TN_NAME)
@@ -397,9 +369,9 @@ VarDef:
       $1->tnName.tnNameId = NULL;
       parseDeleteNode($1);
     }
-| Identifier ConstExpGroup L_ASSIGN InitVal  
+| L_IDENT ConstExpGroup L_ASSIGN InitVal  
     { 
-      TRACE_PARSER (fprintf (stderr, "%d: VarDef -> Identifier ConstExpGroup \"=\" InitVal\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: VarDef -> L_IDENT ConstExpGroup \"=\" InitVal\n", ++nCount));
       $$ = parseCreateNode(TN_VarDef, $1->tnLineNo, $1->tnColumn);
       $$->tnFlags |= TNF_VAR_INIT;
       InsertChildNode($$, $2);
@@ -458,18 +430,18 @@ InitValGroup:
 ;
 
 FuncBody:
-  Identifier L_LPAREN L_RPAREN
+  L_IDENT L_LPAREN L_RPAREN
     {
-      TRACE_PARSER (fprintf (stderr, "%d: FuncBody -> Identifier \"(\" \")\"\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: FuncBody -> L_IDENT \"(\" \")\"\n", ++nCount));
       $$ = parseCreateNode(TN_FuncBody, $1->tnLineNo, $1->tnColumn);
       InsertChildNode($$, $1);
       InsertChildNode($$, parseCreateNode(TN_FuncFParams, LineNum, Column));
       parseDeleteNode($2);
       parseDeleteNode($3);
     }
-| Identifier L_LPAREN FuncFParams L_RPAREN 
+| L_IDENT L_LPAREN FuncFParams L_RPAREN 
     {
-      TRACE_PARSER (fprintf (stderr, "%d: FuncBody -> Identifier \"(\" FuncFParams \")\"\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: FuncBody -> L_IDENT \"(\" FuncFParams \")\"\n", ++nCount));
       $$ = parseCreateNode(TN_FuncBody, $1->tnLineNo, $1->tnColumn);
       InsertChildNode($$, $1);
       InsertChildNode($$, $3);
@@ -544,10 +516,10 @@ FuncFParam:
       node->tnFlags |= TNF_VAR_ARG;
       parseDeleteNode($1);
     }
-| BType Identifier 
+| BType L_IDENT 
     {
       Tree node;
-      TRACE_PARSER (fprintf (stderr, "%d: FuncFParam -> BType Identifier\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: FuncFParam -> BType L_IDENT\n", ++nCount));
       $$ = parseCreateNode(TN_VarDecl, $1->tnLineNo, $1->tnColumn);
       node = parseCreateNode(TN_VarDef, $1->tnLineNo, $1->tnColumn);
       InsertChildNode($$, node);
@@ -557,11 +529,11 @@ FuncFParam:
       node->tnFlags |= TNF_VAR_ARG;
       parseDeleteNode($1);
     }
-| BType Identifier L_LBRACK L_RBRACK ExpGroup 
+| BType L_IDENT L_LBRACK L_RBRACK ExpGroup 
     {
       Tree temp1, temp2;
       Tree node;
-      TRACE_PARSER (fprintf (stderr, "%d: FuncFParam -> BType Identifier \"[\" \"]\" ExpGroup\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: FuncFParam -> BType L_IDENT \"[\" \"]\" ExpGroup\n", ++nCount));
       $$ = parseCreateNode(TN_VarDecl, $1->tnLineNo, $1->tnColumn);
       node = parseCreateNode(TN_VarDef, $1->tnLineNo, $1->tnColumn);
       InsertChildNode($$, node);
@@ -767,9 +739,9 @@ Cond:
 
 /* 左值表达式  */
 LVal:
-  Identifier ExpGroup 
+  L_IDENT ExpGroup 
     { 
-      TRACE_PARSER (fprintf (stderr, "%d: LVal -> Identifier ExpGroup\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: LVal -> L_IDENT ExpGroup\n", ++nCount));
       $$ = $2;
       $$->tnLineNo = $1->tnLineNo;
       $$->tnColumn = $1->tnColumn;
@@ -785,14 +757,14 @@ LVal:
 
 /* 数值  */
 Number:
-  IntConst  
+  L_CINTEGER  
     { 
-      TRACE_PARSER (fprintf (stderr, "%d: Number -> IntConst\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: Number -> L_CINTEGER\n", ++nCount));
       $$ = $1;
     } 
-| floatConst  
+| L_CFLOAT  
     { 
-      TRACE_PARSER (fprintf (stderr, "%d: Number -> floatConst\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: Number -> L_CFLOAT\n", ++nCount));
       $$ = $1;
     }
 ;
@@ -825,9 +797,9 @@ UnaryExp:
       TRACE_PARSER (fprintf (stderr, "%d: UnaryExp -> PrimaryExp\n", ++nCount));
       $$ = $1;
     }
-| Identifier L_LPAREN L_RPAREN  
+| L_IDENT L_LPAREN L_RPAREN  
     {
-      TRACE_PARSER (fprintf (stderr, "%d: UnaryExp -> Identifier \"(\" \")\"\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: UnaryExp -> L_IDENT \"(\" \")\"\n", ++nCount));
       $$ = $1;
       $$->tnLineNo = $1->tnLineNo;
       $$->tnColumn = $1->tnColumn;
@@ -835,9 +807,9 @@ UnaryExp:
       parseDeleteNode($2);
       parseDeleteNode($3);
     }
-| Identifier L_LPAREN FuncRParams L_RPAREN  
+| L_IDENT L_LPAREN FuncRParams L_RPAREN  
     {
-      TRACE_PARSER (fprintf (stderr, "%d: UnaryExp -> Identifier \"(\" FuncRParams \")\"\n", ++nCount));
+      TRACE_PARSER (fprintf (stderr, "%d: UnaryExp -> L_IDENT \"(\" FuncRParams \")\"\n", ++nCount));
       $$ = $3;
       $$->tnLineNo = $1->tnLineNo;
       $$->tnColumn = $1->tnColumn;

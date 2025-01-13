@@ -17,7 +17,7 @@ History    :
 #include <ctype.h>
 #include "all.h"
 
-#include "grammar.tab.h"
+#include "gram.tab.h"
 
 int LineNum = 1; /* 行号  */
 int Column; /*列号  */
@@ -37,7 +37,8 @@ hexadecimalconst (0x|0X)[0-9a-fA-F]+
 %%
 
  
-[ \t]                    { Column = Column + yyleng; }        /* 忽略空白符  */
+[ ]                      { Column = Column + yyleng; }        /* 忽略空白符  */
+[\t]                     { Column = Column + 8 - (Column % 8); }        /* 忽略空白符  */
 [\n]                     { LineNum = LineNum + 1; Column = 1; }    /* 匹配到换行符，行数+1  */
 "int"                    { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_INT); }
 "float"                  { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_FLOAT); }
@@ -49,7 +50,6 @@ hexadecimalconst (0x|0X)[0-9a-fA-F]+
 "if"                     { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_IF); }
 "else"                   { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_ELSE); }
 "while"                  { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_WHILE); }
-"for"                    { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_FOR); }
 "<"                      { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_LT); }
 "<="                     { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_LTEQ); }
 ">"                      { yylval.node = parseCreateNode (TN_NONE, LineNum, Column); Column = Column + yyleng; return (L_GT); }
@@ -89,37 +89,37 @@ hexadecimalconst (0x|0X)[0-9a-fA-F]+
 {decimalconst}                  {
                                   yylval.node = parseCreateIconNode ((unsigned)strtoul(yytext, NULL, 10), TYP_INT, LineNum, Column);
                                   Column = Column + yyleng;
-                                  return (IntConst);
+                                  return (L_CINTEGER);
                                 }
 
 {octalconst}                    {
                                   yylval.node = parseCreateIconNode ((unsigned)strtoul(yytext, NULL, 8), TYP_INT, LineNum, Column);
                                   Column = Column + yyleng;
-                                  return (IntConst);
+                                  return (L_CINTEGER);
                                 }
 
 {hexadecimalconst}              {
                                   yylval.node = parseCreateIconNode ((unsigned)strtoul(yytext, NULL, 16), TYP_INT, LineNum, Column);
                                   Column = Column + yyleng;
-                                  return (IntConst);
+                                  return (L_CINTEGER);
                                 }
                                 
 {hexadecimalfloatingconstant}   {
                                   yylval.node = parseCreateFconNode((float)strtod(yytext, NULL), LineNum, Column);
                                   Column = Column + yyleng;
-                                  return (floatConst);
+                                  return (L_CFLOAT);
                                 }
                                 
 {decimalfloatingconstant}       {
                                   yylval.node = parseCreateFconNode((float)atof(yytext), LineNum, Column);
                                   Column = Column + yyleng;
-                                  return (floatConst);
+                                  return (L_CFLOAT);
                                 }
 
 {identifier}                    {
                                   yylval.node = parseCreateNameNode(yytext,yyleng, LineNum, Column);
                                   Column = Column + yyleng;
-                                  return (Identifier);
+                                  return (L_IDENT);
                                 }
 
 %%
