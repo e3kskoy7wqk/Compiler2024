@@ -5,15 +5,20 @@ compiler for SysY2022 language.
 ## Usage
 
 Usage:
+
 compiler [options] file
 
 Options:
+
   -?                       Display this information.
+
   -S                       Compile only; do not assemble or link.
-  -o <file>                Place the output into <file>.
+
+  -o \<file>                Place the output into \<file>.
 
 The following options control optimizations:
-  -O<number>    Set optimization level to <number>.
+
+  -O\<number>    Set optimization level to \<number>.
 
 ## Frontend
 
