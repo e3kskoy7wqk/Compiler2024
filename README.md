@@ -84,8 +84,10 @@ Package|Version|Notes
 GNU Make|3.79, 3.79.1|Makefile/build processor
 flex|2.6.4|Lexical analysis
 bison|3.8.2|Syntax analysis
-[iburg](https://github.com/drh/iburg)|未知|Tree pattern matching
+[iburg](https://github.com/drh/iburg)|N/A|Tree pattern matching
 graphviz|11.0.0|Graphical output
 
 
-Copyright (c) 2025 Anonymous
+Copyright (c) 2025 Xi’an Jiaotong University
+
+Authors: Tongchao Miao、Xingjun Zhang、Zhendong Tan、Heng Chen、Yancheng Pan
