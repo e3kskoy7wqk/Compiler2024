@@ -1,66 +1,66 @@
 # compiler
 
-compiler为2024年“华为毕昇杯”编译系统设计赛-编译系统实现赛，“正道的光”队的参赛作品。本作品获得ARM赛道二等奖。
+compiler for SysY2022 language.
 
-## 主要功能
+## Usage
 
-命令格式:
-compiler [选项] 文件
+Usage:
+compiler [options] file
 
-选项-S 编译到汇编语言，不进行汇编和链接
+Options:
+  -?                       Display this information.
+  -S                       Compile only; do not assemble or link.
+  -o <file>                Place the output into <file>.
 
-选项-o <文件> 输出到 <文件>
+The following options control optimizations:
+  -O<number>    Set optimization level to <number>.
 
-选项-O<N> 将优化等级设为 N
+## Frontend
 
-选项-g 在汇编代码中生成详细的调试信息
-
-## 前端
-
-函数名|描述
+Function name|Description
 :-:|:-:
-ParseFile|解析源文件
-ParseString|解析字符串
+ParseFile|Parse source file
+ParseString|Parse String
 
-## 机器无关优化
+## Machine-independent Optimizations
 
-名称|函数名|描述
+Name|Function name|Description
 :-:|:-:|:-:
-常量折叠|FoldFltUnop、FoldFltBinop、FoldIntBinop、FoldIntUnop|
-循环倒置|copy_loop_headers|
-内联替换|inline_transform|
-SSA形式的构建|build_ssa|
-稀疏条件常量传播|SparseCondConstProp|
-全局值编号|GlobalValueNumbering|
-SSA形式的消去|remove_ssa_form|
-SSA形式的消去|rewrite_out_of_ssa|
-懒惰代码移动|LazyCodeMotion|
-复写传播|copyprop|
-局部复写传播|local_copyprop_pass|
-死代码消除|perform_ssa_dce|
-弱强度削减|StraightLineStrengthReduce|
-消除无用控制流|cleanup_cfg|
-全局变量局部化|GlobalVariableLocalization|
-运算符强度削减|OSR|
-循环展开|unroll_loops|
-树高平衡|treeheight|
+Constant Folding|FoldFltUnop、FoldFltBinop、FoldIntBinop、FoldIntUnop|
+Loop Inversion|copy_loop_headers|
+Inline Transform|inline_transform|
+SSA Form Construction|build_ssa|
+ Sparse Conditional Constant Propagation |SparseCondConstProp|
+Global Value Numbering|GlobalValueNumbering|
+SSA Form Elimination|remove_ssa_form|
+SSA Form Elimination|rewrite_out_of_ssa|
+Lazy Code Motion|LazyCodeMotion|
+Copy Propagation|copyprop|
+Local Copy Propagation|local_copyprop_pass|
+Dead Code Elimination|perform_ssa_dce|
+Strength Reduction|StraightLineStrengthReduce|
+Elimination of Useless Control Flow|cleanup_cfg|
+Global Variable Localization|GlobalVariableLocalization|
+Operator Strength Reduction|OSR|
+Loop Unrolling|unroll_loops|
+Tree Height Reducing|treeheight|
 
-## 后端
+## Backend
 
-名称|函数名|描述
+Name|Function name|Description
 :-:|:-:|:-:
-指令选择|InstSelectorArm32|算法：树模式匹配
-寄存器分配|LinearScanAllocator|算法：线性扫描寄存器分配
-寄存器分配|regallocArm32|算法：图着色寄存器分配
-条件指令|if_convertArm32|
+Instruction Selection and Scheduling|InstSelectorArm32|Algorithm: TreeSeq
+Register Allocation|LinearScanAllocator|Algorithm: Linear Scan
+Register Allocation|ra_colorize_graph|Algorithm: Graph Coloring
+if convert|if_convertArm32|
 
-## 要求
+## Requirements
 
-在开始使用compiler之前，请先查看下面给出的要求。提前了解所需的硬件和软件可能会为您省去一些麻烦。
+Before you start using the compiler, please review the requirements listed below. Familiarizing yourself with the necessary hardware and software in advance may save you some trouble.
 
-### 硬件
+### Hardware 
 
-compiler已知可以在以下主机平台上运行：
+compiler is known to run on the following host platforms:
 OS|Arch|Compilers
 :-:|:-:|:-:
 Linux|x86|GCC, Clang
@@ -69,25 +69,18 @@ Linux|ARM|GCC, Clang
 Windows|x86|Visual Studio
 Windows x64|x86-64|Visual Studio
 
-### 软件
+### Software 
 
-编译compiler需要安装多个软件包。下表列出了所需的软件包。Package列是compiler所依赖的软件包的常用名称。Version列提供该软件包的“已知可用”版本。Notes列描述了compiler如何使用该软件包并提供其他详细信息。
+To compile compiler, you need to install several packages. The following table lists the required packages. The `Package` column is the common name of the package on which the compiler depends. The `Version` column provides the "known available" version of the package. The `Notes` column describes how the compiler uses the package and provides other details.
 
 Package|Version|Notes
 :-:|:-:|:-:
 [CMake](https://cmake.org/)|>=3.20.0|Makefile/workspace generator
 GNU Make|3.79, 3.79.1|Makefile/build processor
-flex|2.6.4|词法分析
-bison|3.8.2|语法分析
-[iburg](https://github.com/drh/iburg)|未知|树模式匹配
-graphviz|11.0.0|图形输出
+flex|2.6.4|Lexical analysis
+bison|3.8.2|Syntax analysis
+[iburg](https://github.com/drh/iburg)|未知|Tree pattern matching
+graphviz|11.0.0|Graphical output
 
 
-版权所有 (c) 2024 西北工业大学正道的光编译器开发组。保留所有权利。
-
-作者：苗潼超。
-
-感谢谭钰蓁、袁竟程同学提供的技术支持。
-
-特别感谢曾雷杰、林奕老师提供的理论、技术指导。
-
+Copyright (c) 2025 Anonymous
